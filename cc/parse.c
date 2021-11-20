@@ -10,6 +10,9 @@ unit_t *make_unit()
 unit_t *translation_unit()
 {
   func_t *body, *head;
+  
+  struct_declarations();
+  
   body = head = func_declaration();
   while (head)
     head = head->next = func_declaration();

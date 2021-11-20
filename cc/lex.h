@@ -1,7 +1,7 @@
 #ifndef LEX_H
 #define LEX_H
 
-#include "hash.h"
+#include "../common/hash.h"
 #include <stdio.h>
 
 #define MAX_STR 1024
@@ -42,7 +42,8 @@ enum token_e {
   TK_WHILE,
   TK_RETURN,
   TK_BREAK,
-  TK_ELSE
+  TK_ELSE,
+  TK_STRUCT
 };
 
 struct lex_s {

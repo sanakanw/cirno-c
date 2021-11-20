@@ -9,6 +9,8 @@ spec_t *ty_i32;
 
 map_t *scope_local;
 map_t *scope_func;
+map_t *scope_struct;
+map_t *scope_struct_decl;
 
 func_t *current_func;
 
@@ -24,9 +26,11 @@ void decl_init()
   
   scope_func = make_map();
   scope_local = make_map();
+  scope_struct = make_map();
+  scope_struct_decl = make_map();
   
-  ty_u0 = spec_cache_find(TY_U0);
-  ty_i32 = spec_cache_find(TY_I32);
+  ty_u0 = spec_cache_find(TY_U0, NULL);
+  ty_i32 = spec_cache_find(TY_I32, NULL);
   
   current_func = NULL;
 }
@@ -85,6 +89,25 @@ func_t *make_func(hash_t name, type_t *type, param_t *params, stmt_t *body, int 
   return func;
 }
 
+struct_scope_t *make_struct_scope()
+{
+  struct_scope_t *struct_scope = malloc(sizeof(struct_scope_t));
+  struct_scope->list = NULL;
+  struct_scope->size = 0;
+  return struct_scope;
+}
+
+struct_decl_t *make_struct_decl(spec_t *spec, dcltr_t *dcltr, int offset, hash_t name, struct_decl_t *next)
+{
+  struct_decl_t *struct_decl = malloc(sizeof(struct_decl_t));
+  struct_decl->type.spec = spec;
+  struct_decl->type.dcltr = dcltr;
+  struct_decl->offset = offset;
+  struct_decl->name = name;
+  struct_decl->next = next;
+  return struct_decl;
+}
+
 int is_type_match(type_t *lhs, type_t *rhs)
 {
   if (!rhs
@@ -92,7 +115,7 @@ int is_type_match(type_t *lhs, type_t *rhs)
   || !lhs->spec
   || !rhs->spec
   || lhs->spec->tspec != rhs->spec->tspec
-  || lhs->spec->tag != rhs->spec->tag)
+  || lhs->spec->struct_scope != rhs->spec->struct_scope)
     return 0;
   
   if ((!lhs->dcltr && rhs->dcltr) || (lhs->dcltr && !rhs->dcltr))
@@ -128,6 +151,9 @@ int type_size(spec_t *spec, dcltr_t *dcltr)
       return type_size(ty_i32, NULL);
     case DCLTR_ARRAY:
       return type_size(spec, dcltr->next) * dcltr->size;
+    default:
+      error("type_size", "unknown case: dcltr->type");
+      return -1;
     }
   } else {
     switch (spec->tspec) {
@@ -135,6 +161,11 @@ int type_size(spec_t *spec, dcltr_t *dcltr)
       return 0;
     case TY_I32:
       return 4;
+    case TY_STRUCT:
+      return spec->struct_scope->size;
+    default:
+      error("type_size", "unknown case: spec->tspec");
+      return -1;
     }
   }
 }
@@ -221,6 +252,61 @@ param_t *param_declaration()
 void local_declarations(param_t *params)
 {
   while (local_declaration());
+}
+
+void struct_declarations()
+{
+  while (struct_declaration());
+}
+
+int struct_declaration()
+{
+  if (lex.token != TK_STRUCT)
+    return 0;
+  
+  match(TK_STRUCT);
+  
+  hash_t name = lex.token_hash;
+  match(TK_IDENTIFIER);
+  
+  struct_scope_t *struct_scope = make_struct_scope();
+  
+  match('{');
+  while (struct_member_declaration(struct_scope));
+  match('}');
+  match(';');
+  
+  if (!map_put(scope_struct, name, struct_scope))
+    token_error("redefinition of %s", hash_get(name));
+  
+  return 1;
+}
+
+int struct_member_declaration(struct_scope_t *struct_scope)
+{
+  hash_t name;
+  
+  spec_t *spec = specifiers();
+  
+  if (!spec)
+    return 0;
+  
+  while (1) {
+    dcltr_t *dcltr = direct_declarator(&name);
+    
+    struct_decl_t *struct_decl = make_struct_decl(spec, dcltr, struct_scope->size, name, struct_scope->list);
+    struct_scope->size += type_size(spec, dcltr);
+    struct_scope->list = struct_decl;
+    
+    if (lex.token == ',')
+      match(',');
+    else
+      break;
+  }
+  
+  match(';');
+  
+  return 1;
 }
 
 int local_declaration()
@@ -354,28 +440,49 @@ dcltr_t *pointer()
 spec_t *specifiers()
 {
   tspec_t tspec;
+  struct_scope_t *struct_scope = NULL;
   switch (lex.token) {
   case TK_I32:
     tspec = TY_I32;
     break;
+  case TK_IDENTIFIER:
+    tspec = TY_STRUCT;
+    if (!(struct_scope = map_get(scope_struct, lex.token_hash)))
+      goto not_spec;
+    break;
+  not_spec:
   default:
     return NULL;
   }
   
   next();
   
-  return spec_cache_find(tspec);
+  return spec_cache_find(tspec, struct_scope);
 }
 
-spec_t *spec_cache_find(tspec_t tspec)
+struct_decl_t *find_struct_decl(struct_scope_t *struct_scope, hash_t name)
+{
+  struct_decl_t *struct_decl = struct_scope->list;
+  
+  while (struct_decl) {
+    if (struct_decl->name == name)
+      return struct_decl;
+    struct_decl = struct_decl->next;
+  }
+  
+  return NULL;
+}
+
+spec_t *spec_cache_find(tspec_t tspec, struct_scope_t *struct_scope)
 {
   for (int i = 0; i < num_spec; i++) {
-    if (spec_cache[i].tspec == tspec)
+    if (spec_cache[i].tspec == tspec && spec_cache[i].struct_scope == struct_scope)
       return &spec_cache[i];
   }
   
   spec_t *spec = &spec_cache[++num_spec];
   spec->tspec = tspec;
+  spec->struct_scope = struct_scope;
   
   return spec;
 }

@@ -14,24 +14,18 @@ int main(int argc, char **argv)
   lexify(in, "test.c");
   
   unit_t *unit = translation_unit();
-  
   printf("[1] translated\n");
   
   bin_t *bin = gen(unit);
-  
   printf("[2] compiled\n");
   
-  bin_dump(bin);
+  FILE *out = fopen("test.out", "wb");
   
-  vm_t *vm = make_vm();
-  vm_load(vm, bin);
+  bin_write(bin, out); 
+  printf("[3]:done\n");
   
-  vm_exec(vm);
-  
-  printf("[3] executed\n");
-  
-  for (int i = MAX_MEM - 1; i >= MAX_MEM - 8; i--)
-    printf("%i %i\n", i * sizeof(int), vm->mem[i]);
+  fclose(out);
+  fclose(in);
   
   return 0;
 }

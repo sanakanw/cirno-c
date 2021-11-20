@@ -1,6 +1,6 @@
 #include "lex.h"
 
-#include "error.h"
+#include "../common/error.h"
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
@@ -105,13 +105,14 @@ op_t op_dict[] = {
 };
 
 keyword_t keyword_dict[] = {
-  { "fn",       TK_FN          },
-  { "i32",      TK_I32         },
-  { "if",       TK_IF          },
-  { "while",    TK_WHILE       },
-  { "return",   TK_RETURN      },
-  { "break",    TK_BREAK       },
-  { "else",     TK_ELSE        }
+  { "fn",       TK_FN           },
+  { "i32",      TK_I32          },
+  { "if",       TK_IF           },
+  { "while",    TK_WHILE        },
+  { "return",   TK_RETURN       },
+  { "break",    TK_BREAK        },
+  { "else",     TK_ELSE         },
+  { "struct",   TK_STRUCT       }
 };
 
 const int op_dict_count = sizeof(op_dict) / sizeof(op_t);

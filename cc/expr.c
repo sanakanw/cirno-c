@@ -74,7 +74,7 @@ expr_t *make_func_expr(func_t *func)
   expr_t *expr = make_expr();
   expr->texpr = EXPR_FUNC;
   expr->func.func = func;
-  expr->type.spec = spec_cache_find(TY_FUNC);
+  expr->type.spec = spec_cache_find(TY_FUNC, NULL);
   expr->type.dcltr = NULL;
   return expr;
 }
@@ -226,6 +226,11 @@ int is_pointer(expr_t *expr)
   return expr->type.dcltr && expr->type.dcltr->type == DCLTR_POINTER;
 }
 
+int is_struct(expr_t *expr)
+{
+  return expr->type.spec->tspec == TY_STRUCT;
+}
+
 expr_t *find_identifier()
 {
   hash_t name = lex.token_hash;
@@ -303,6 +308,38 @@ expr_t *postfix()
         token_error("cannot call non-function");
       
       return make_call(expr, post);
+    } else if (lex.token == '.') {
+      match('.');
+      
+      hash_t name = lex.token_hash;
+      match(TK_IDENTIFIER);
+      
+      if (!is_struct(expr))
+        token_error("cannot use '.' operator on non-struct");
+      
+      if (is_pointer(expr))
+        token_error("cannot use '.' operator on struct-pointer; did you mean '->'?");
+      
+      struct_decl_t *struct_decl = find_struct_decl(expr->type.spec->struct_scope, name);
+      
+      expr_t *base = make_binop(expr->addr.base, OPERATOR_ADD, make_const(struct_decl->offset));
+      expr = make_load(base, expr->addr.taddr, &struct_decl->type);
+    } else if (lex.token == TK_PTR_OP) {
+      match(TK_PTR_OP);
+      
+      hash_t name = lex.token_hash;
+      match(TK_IDENTIFIER);
+      
+      if (!is_struct(expr))
+        token_error("cannot use '->' operator on non-struct");
+      
+      if (!is_pointer(expr))
+        token_error("cannot use '->' operator on non-struct-pointer; did you mean '.'?");
+      
+      struct_decl_t *struct_decl = find_struct_decl(expr->type.spec->struct_scope, name);
+      
+      expr_t *base = make_binop(expr, OPERATOR_ADD, make_const(struct_decl->offset));
+      expr = make_load(base, ADDR_GLOBAL, &struct_decl->type);
     } else {
       break;
     }

@@ -1,39 +1,32 @@
 #include "vm.h"
 
-#include "../src/error.h"
+#include "../common/error.h"
 #include <stdio.h>
 #include <stdlib.h>
 
 #define ALIGN_32(X) (X / 4)
 
-static const char *instr_tbl[] = {
-  "push",
-  "add",
-  "sub",
-  "mul",
-  "div",
-  "ldr",
-  "str",
-  "lbp",
-  "enter",
-  "leave",
-  "call",
-  "ret",
-  "jmp",
-  "cmp",
-  "je",
-  "jne",
-  "jl",
-  "jg",
-  "jle",
-  "jge",
-  "sete",
-  "setne",
-  "setl",
-  "setg",
-  "setle",
-  "setge"
-};
+int main(int argc, char **argv)
+{
+  FILE *in = fopen("test.out", "rb");
+  
+  hash_init();
+  
+  hash_value("main");
+  
+  bin_t *bin = bin_read(in);
+  bin_dump(bin);
+  
+  vm_t *vm = make_vm();
+  vm_load(vm, bin);
+  
+  vm_exec(vm);
+  
+  fclose(in);
+  
+  for (int i = MAX_MEM - 1; i >= MAX_MEM - 8; i--)
+    printf("%i %i\n", i * sizeof(int), vm->mem[i]);
+}
 
 vm_t *make_vm()
 {
@@ -46,32 +39,6 @@ vm_t *make_vm()
   vm->s_i32 = vm->stack;
   vm->m_i32 = vm->mem;
   return vm;
-}
-
-void bin_dump(bin_t *bin)
-{
-  int i = 0;
-  while (i < bin->num_instr) {
-    switch (bin->instr[i]) {
-    case PUSH:
-    case ENTER:
-    case CALL:
-    case JMP:
-    case JE:
-    case JNE:
-    case JL:
-    case JG:
-    case JLE:
-    case JGE:
-      printf("%03i %s %i\n", i, instr_tbl[bin->instr[i]], bin->instr[i + 1]);
-      i += 2;
-      break;
-    default:
-      printf("%03i %s\n", i, instr_tbl[bin->instr[i]]);
-      i += 1;
-      break;
-    }
-  }
 }
 
 instr_t fetch(vm_t *vm)

@@ -1,8 +1,8 @@
 #include "gen.h"
 
-#include "hash.h"
-#include "map.h"
-#include "error.h"
+#include "../common/hash.h"
+#include "../common/map.h"
+#include "../common/error.h"
 #include <stdlib.h>
 
 typedef struct label_s label_t;
@@ -127,6 +127,18 @@ void replace_all()
   }
 }
 
+tspec_t simplify_type_spec(type_t *type)
+{
+  if (type->dcltr) {
+    switch (type->dcltr->type) {
+    case DCLTR_POINTER:
+      return TY_I32;
+    }
+  }
+  
+  return type->spec->tspec;
+}
+
 instr_t *add_instr(instr_t instr)
 {
   if (instr_ptr >= &instr_buf[max_instr])
@@ -151,16 +163,6 @@ sym_t *add_sym(hash_t name)
   sym_ptr++;
   
   return cache;
-}
-
-bin_t *make_bin(instr_t *instr, int num_instr, sym_t *sym, int num_sym)
-{
-  bin_t *bin = malloc(sizeof(bin_t));
-  bin->instr = instr;
-  bin->sym = sym;
-  bin->num_instr = num_instr;
-  bin->num_sym = num_sym;
-  return bin;
 }
 
 bin_t *gen(unit_t *unit)
@@ -464,7 +466,8 @@ void gen_binop(expr_t *expr)
     gen_expr(expr->binop.lhs);
     gen_expr(expr->binop.rhs);
     
-    switch (expr->type.spec->tspec) {
+    tspec_t tspec = simplify_type_spec(&expr->type);
+    switch (tspec) {
     case TY_I32:
       switch (expr->binop.op) {
       case OPERATOR_ADD:
@@ -504,9 +507,13 @@ void gen_binop(expr_t *expr)
         add_instr(SETGE);
         break;
       default:
-        error("gen_binop", "unknown case '%i'", expr->binop.op);
+        error("gen_binop", "unknown case: op: '%i'", expr->binop.op);
         break;
       }
+      break;
+    default:
+      error("gen_binop", "unknown case: spec: '%i'", tspec);
+      break;
     }
   }
 }

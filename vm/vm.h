@@ -9,54 +9,12 @@
 #define MAX_CALL 64
 #define MAX_FRAME 64
 
-#include "../src/hash.h"
+#include "../common/bin.h"
+#include "../common/hash.h"
+#include "../common/instr.h"
 
-typedef enum instr_e instr_t;
 typedef struct vm_s vm_t;
-typedef struct bin_s bin_t;
-typedef struct sym_s sym_t;
 typedef struct call_s call_t;
-
-enum instr_e {
-  PUSH,
-  ADD,
-  SUB,
-  MUL,
-  DIV,
-  LDR,
-  STR,
-  LBP,
-  ENTER,
-  LEAVE,
-  CALL,
-  RET,
-  JMP,
-  CMP,
-  JE,
-  JNE,
-  JL,
-  JG,
-  JLE,
-  JGE,
-  SETE,
-  SETNE,
-  SETL,
-  SETG,
-  SETLE,
-  SETGE
-};
-
-struct bin_s {
-  instr_t *instr;
-  sym_t *sym;
-  int num_instr;
-  int num_sym;
-};
-
-struct sym_s {
-  hash_t name;
-  int pos;
-};
 
 struct vm_s {
   bin_t *bin;
@@ -69,8 +27,6 @@ struct vm_s {
   int *s_i32;
   int *m_i32;
 };
-
-void bin_dump(bin_t *bin);
 
 vm_t *make_vm();
 void vm_load(vm_t *vm, bin_t *bin);

@@ -1,8 +1,8 @@
 #ifndef PARSE_H
 #define PARSE_H
 
-#include "map.h"
-#include "hash.h"
+#include "../common/map.h"
+#include "../common/hash.h"
 #include "lex.h"
 
 typedef enum tspec_e tspec_t;
@@ -13,6 +13,8 @@ typedef struct type_s type_t;
 typedef struct decl_s decl_t;
 typedef struct func_s func_t;
 typedef struct param_s param_t;
+typedef struct struct_decl_s struct_decl_t;
+typedef struct struct_scope_s struct_scope_t;
 
 typedef enum operator_e operator_t;
 typedef enum texpr_e texpr_t;
@@ -38,7 +40,7 @@ enum tdcltr_e {
 
 struct spec_s {
   tspec_t tspec;
-  map_t *tag;
+  struct_scope_t *struct_scope;
 };
 
 struct dcltr_s {
@@ -59,6 +61,20 @@ struct decl_s {
   hash_t name;
   
   int offset;
+};
+
+struct struct_scope_s {
+  struct_decl_t *list;
+  int size;
+};
+
+struct struct_decl_s {
+  type_t type;
+  hash_t name;
+  
+  int offset;
+  
+  struct_decl_t *next;
 };
 
 struct param_s {
