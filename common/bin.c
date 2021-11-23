@@ -47,7 +47,9 @@ static const char *instr_tbl[] = {
   "setl",
   "setg",
   "setle",
-  "setge"
+  "setge",
+  "sx8_32",
+  "sx32_8"
 };
 
 bin_t *make_bin(instr_t *instr, int num_instr, sym_t *sym, int num_sym)

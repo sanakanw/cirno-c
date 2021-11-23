@@ -28,6 +28,7 @@ typedef struct unit_s unit_t;
 
 enum tspec_e {
   TY_U0,
+  TY_I8,
   TY_I32,
   TY_STRUCT,
   TY_FUNC
@@ -116,7 +117,8 @@ enum texpr_e {
   EXPR_BINOP,
   EXPR_FUNC,
   EXPR_CALL,
-  EXPR_ARG
+  EXPR_ARG,
+  EXPR_CAST
 };
 
 enum taddr_e {

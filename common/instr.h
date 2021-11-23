@@ -29,7 +29,9 @@ enum instr_e {
   SETL,
   SETG,
   SETLE,
-  SETGE
+  SETGE,
+  SX8_32,
+  SX32_8
 };
 
 #endif

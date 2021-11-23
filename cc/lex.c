@@ -47,6 +47,7 @@ const char *token_str[] = {
   "==",
   "!=",       
   "fn",
+  "i8",
   "i32",
   "if",
   "while",
@@ -106,6 +107,7 @@ op_t op_dict[] = {
 
 keyword_t keyword_dict[] = {
   { "fn",       TK_FN           },
+  { "i8",       TK_I8           },
   { "i32",      TK_I32          },
   { "if",       TK_IF           },
   { "while",    TK_WHILE        },

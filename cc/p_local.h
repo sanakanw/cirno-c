@@ -24,6 +24,7 @@ struct_decl_t *find_struct_decl(struct_scope_t *struct_scope, hash_t name);
 
 int constant_expression(int *num);
 expr_t *primary();
+expr_t *cast();
 expr_t *binop(int level);
 expr_t *arg_expr_list();
 expr_t *expression();

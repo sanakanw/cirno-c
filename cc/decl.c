@@ -5,6 +5,7 @@
 #include <stdlib.h>
 
 spec_t *ty_u0;
+spec_t *ty_i8;
 spec_t *ty_i32;
 
 map_t *scope_local;
@@ -30,6 +31,7 @@ void decl_init()
   scope_struct_decl = make_map();
   
   ty_u0 = spec_cache_find(TY_U0, NULL);
+  ty_i8 = spec_cache_find(TY_I8, NULL);
   ty_i32 = spec_cache_find(TY_I32, NULL);
   
   current_func = NULL;
@@ -159,6 +161,8 @@ int type_size(spec_t *spec, dcltr_t *dcltr)
     switch (spec->tspec) {
     case TY_U0:
       return 0;
+    case TY_I8:
+      return 1;
     case TY_I32:
       return 4;
     case TY_STRUCT:
@@ -442,6 +446,9 @@ spec_t *specifiers()
   tspec_t tspec;
   struct_scope_t *struct_scope = NULL;
   switch (lex.token) {
+  case TK_I8:
+    tspec = TY_I8;
+    break;
   case TK_I32:
     tspec = TY_I32;
     break;

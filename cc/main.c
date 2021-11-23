@@ -22,7 +22,7 @@ int main(int argc, char **argv)
   FILE *out = fopen("test.out", "wb");
   
   bin_write(bin, out); 
-  printf("[3]:done\n");
+  printf("[3] done\n");
   
   fclose(out);
   fclose(in);

@@ -47,6 +47,8 @@ void gen_addr(expr_t *expr);
 void gen_call(expr_t *expr);
 void gen_load(expr_t *expr);
 void gen_binop(expr_t *expr);
+void gen_cast(expr_t *expr);
+
 void gen_condition(expr_t *expr, hash_t end);
 
 label_t *make_label(hash_t name, instr_t *pos)
@@ -309,8 +311,48 @@ void gen_expr(expr_t *expr)
   case EXPR_CALL:
     gen_call(expr);
     break;
+  case EXPR_CAST:
+    gen_cast(expr);
+    break;
   default:
     error("gen_expr", "unknown case");
+    break;
+  }
+}
+
+void gen_cast(expr_t *expr)
+{
+  tspec_t type_a, type_b;
+  
+  gen_expr(expr->unary.base);
+  
+  type_a = simplify_type_spec(&expr->type);
+  type_b = simplify_type_spec(&expr->unary.base->type);
+  
+  switch (type_a) {
+  case TY_I8:
+    switch (type_b) {
+    case TY_I8:
+      break;
+    case TY_I32:
+      add_instr(SX32_8);
+      break;
+    case TY_STRUCT:
+      break;
+    }
+    break;
+  case TY_I32:
+    switch (type_b) {
+    case TY_I8:
+      add_instr(SX8_32);
+      break;
+    case TY_I32:
+      break;
+    case TY_STRUCT:
+      break;
+    }
+    break;
+  case TY_STRUCT:
     break;
   }
 }

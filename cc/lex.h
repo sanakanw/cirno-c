@@ -37,6 +37,7 @@ enum token_e {
   TK_EQ_OP,
   TK_NE_OP,
   TK_FN,
+  TK_I8,
   TK_I32,
   TK_IF,
   TK_WHILE,

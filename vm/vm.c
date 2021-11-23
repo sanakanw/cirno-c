@@ -199,6 +199,17 @@ static inline void vm_setge(vm_t *vm)
   vm_push(vm, vm->f_equ || vm->f_gtr);
 }
 
+static inline void vm_sx8_32(vm_t *vm)
+{
+  int is_sign = (vm->s_i32[vm->sp - 1] & 0x80);
+  vm->s_i32[vm->sp - 1] = (is_sign << 24) | (is_sign ? (vm->s_i32[vm->sp - 1] & 0x7f) : (vm->s_i32[vm->sp - 1] | ~0x7f));
+}
+
+static inline void vm_sx32_8(vm_t *vm)
+{
+  vm->s_i32[vm->sp - 1] = ((vm->s_i32[vm->sp - 1] & 0x80000000) >> 24) | (vm->s_i32[vm->sp & 0x7f]);
+}
+
 void vm_load(vm_t *vm, bin_t *bin)
 {
   vm->bin = bin;
@@ -303,6 +314,12 @@ void vm_exec(vm_t *vm)
       break;
     case SETGE:
       vm_setge(vm);
+      break;
+    case SX8_32:
+      vm_sx8_32(vm);
+      break;
+    case SX32_8:
+      vm_sx32_8(vm);
       break;
     }
   }

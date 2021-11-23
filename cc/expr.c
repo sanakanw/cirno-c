@@ -69,6 +69,16 @@ expr_t *make_load(expr_t *base, taddr_t taddr, type_t *type)
   return expr;
 }
 
+expr_t *make_cast_expr(type_t *type, expr_t *base)
+{
+  expr_t *expr = make_expr();
+  expr->texpr = EXPR_CAST;
+  expr->unary.base = base;
+  expr->type.spec = type->spec;
+  expr->type.dcltr = type->dcltr;
+  return expr;
+}
+
 expr_t *make_func_expr(func_t *func)
 {
   expr_t *expr = make_expr();
@@ -376,7 +386,7 @@ expr_t *unary()
   if (lex.token == '&') {
     match('&');
     
-    expr_t *expr = postfix();
+    expr_t *expr = cast();
     
     if (!is_lvalue(expr))
       token_error("unary operator '&' requires lvalue");
@@ -388,7 +398,7 @@ expr_t *unary()
   } else if(lex.token == '*') {
     match('*');
     
-    expr_t *expr = postfix();
+    expr_t *expr = cast();
     
     if (!is_pointer(expr))
       token_error("cannot cast indirection on non-pointer");
@@ -398,19 +408,38 @@ expr_t *unary()
     return make_load(expr, ADDR_GLOBAL, &indirect_type);
   } if (lex.token == '-') {
     match('-');
-    return make_binop(postfix(), OPERATOR_MUL, make_const(-1));
+    return make_binop(cast(), OPERATOR_MUL, make_const(-1));
   } else if (lex.token == '+') {
     match('+');
-    return postfix();
+    return cast();
   } else {
     return postfix();
   }
 }
 
+expr_t *cast()
+{
+  if (lex.token == '(') {
+    match('(');
+    
+    type_t type = { 0 };
+    if (type_name(&type)) {
+      match(')');
+      return make_cast_expr(&type, unary());
+    } else {
+      expr_t *base = expression();
+      match(')');
+      return base;
+    }
+  }
+  
+  return unary();
+}
+
 expr_t *binop(int level)
 {
   if (level >= num_opset_dict)
-    return unary();
+    return cast();
   
   expr_t *lhs = binop(level + 1);
   
