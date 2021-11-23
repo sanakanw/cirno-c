@@ -6,6 +6,12 @@
 
 #define ALIGN_32(X) (X / 4)
 
+typedef enum int_code_e int_code_t;
+
+enum int_code_e {
+  INT_PRINT
+};
+
 int main(int argc, char **argv)
 {
   FILE *in = fopen("test.out", "rb");
@@ -15,7 +21,7 @@ int main(int argc, char **argv)
   hash_value("main");
   
   bin_t *bin = bin_read(in);
-  bin_dump(bin);
+  // bin_dump(bin);
   
   vm_t *vm = make_vm();
   vm_load(vm, bin);
@@ -24,8 +30,9 @@ int main(int argc, char **argv)
   
   fclose(in);
   
+  /*
   for (int i = MAX_MEM - 1; i >= MAX_MEM - 8; i--)
-    printf("%i %i\n", i * sizeof(int), vm->mem[i]);
+    printf("%i %i\n", i * sizeof(int), vm->mem[i]);*/
 }
 
 vm_t *make_vm()
@@ -37,6 +44,7 @@ vm_t *make_vm()
   vm->cp = 0;
   vm->fp = 0;
   vm->s_i32 = vm->stack;
+  vm->m_i8 = (char*) vm->mem;
   vm->m_i32 = vm->mem;
   return vm;
 }
@@ -88,6 +96,12 @@ static inline void vm_ldr(vm_t *vm)
 static inline void vm_str(vm_t *vm)
 {
   vm->m_i32[ALIGN_32(vm->s_i32[vm->sp - 1])] = vm->s_i32[vm->sp - 2];
+  vm->sp -= 2;
+}
+
+static inline void vm_str8(vm_t *vm)
+{
+  vm->m_i8[vm->s_i32[vm->sp - 1]] = vm->s_i32[vm->sp - 2];
   vm->sp -= 2;
 }
 
@@ -202,12 +216,22 @@ static inline void vm_setge(vm_t *vm)
 static inline void vm_sx8_32(vm_t *vm)
 {
   int is_sign = (vm->s_i32[vm->sp - 1] & 0x80);
-  vm->s_i32[vm->sp - 1] = (is_sign << 24) | (is_sign ? (vm->s_i32[vm->sp - 1] & 0x7f) : (vm->s_i32[vm->sp - 1] | ~0x7f));
+  vm->s_i32[vm->sp - 1] = (is_sign << 24) | (is_sign ? (vm->s_i32[vm->sp - 1] | ~0x7f) : (vm->s_i32[vm->sp - 1] & 0x7f));
 }
 
 static inline void vm_sx32_8(vm_t *vm)
 {
-  vm->s_i32[vm->sp - 1] = ((vm->s_i32[vm->sp - 1] & 0x80000000) >> 24) | (vm->s_i32[vm->sp & 0x7f]);
+  vm->s_i32[vm->sp - 1] = ((vm->s_i32[vm->sp - 1] & 0x80000000) >> 24) | (vm->s_i32[vm->sp - 1] & 0x7f);
+}
+
+static inline void vm_int(vm_t *vm, int code)
+{
+  switch (code) {
+  case INT_PRINT:
+    printf("%i\n", vm->s_i32[vm->sp - 1]);
+    vm->sp -= 1;
+    break;
+  }
 }
 
 void vm_load(vm_t *vm, bin_t *bin)
@@ -260,6 +284,9 @@ void vm_exec(vm_t *vm)
       break;
     case STR:
       vm_str(vm);
+      break;
+    case STR8:
+      vm_str8(vm);
       break;
     case LBP:
       vm_lbp(vm);
@@ -320,6 +347,12 @@ void vm_exec(vm_t *vm)
       break;
     case SX32_8:
       vm_sx32_8(vm);
+      break;
+    case INT:
+      vm_int(vm, fetch(vm));
+      break;
+    default:
+      error("vm_exec", "unknown op");
       break;
     }
   }

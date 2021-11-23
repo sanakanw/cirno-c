@@ -130,7 +130,8 @@ enum tstmt_e {
   STMT_EXPR,
   STMT_IF,
   STMT_WHILE,
-  STMT_RETURN
+  STMT_RETURN,
+  STMT_INLINE_ASM
 };
 
 struct expr_s {
@@ -176,6 +177,9 @@ struct stmt_s {
     struct {
       expr_t *value;
     } ret_stmt;
+    struct {
+      char *code;
+    } inline_asm_stmt;
   };
   tstmt_t tstmt;
   stmt_t *next;

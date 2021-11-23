@@ -145,6 +145,35 @@ int is_type_match(type_t *lhs, type_t *rhs)
   return 1;
 }
 
+int type_align(spec_t *spec, dcltr_t *dcltr)
+{
+  if (dcltr) {
+    switch (dcltr->type) {
+    case DCLTR_POINTER:
+      return type_align(ty_i32, NULL);
+    case DCLTR_ARRAY:
+      return type_align(spec, dcltr->next);
+    default:
+      error("type_align", "unknown case: dcltr->type");
+      return -1;
+    }
+  } else {
+    switch (spec->tspec) {
+    case TY_U0:
+      return 0;
+    case TY_I8:
+      return 1;
+    case TY_I32:
+      return 4;
+    case TY_STRUCT:
+      return spec->struct_scope->size;
+    default:
+      error("type_size", "unknown case: spec->tspec");
+      return -1;
+    }
+  }
+}
+
 int type_size(spec_t *spec, dcltr_t *dcltr)
 {
   if (dcltr) {
@@ -340,6 +369,7 @@ int local_declaration()
 decl_t *insert_decl(spec_t *spec, dcltr_t *dcltr, hash_t name)
 {
   decl_t *decl = make_decl(spec, dcltr, local_offset);
+  local_offset = (local_offset + type_align(spec, dcltr) - 1) & ~(type_align(spec, dcltr) - 1);
   local_offset += type_size(spec, dcltr);
   map_put(scope_local, name, decl);
   return decl;

@@ -3,6 +3,8 @@
 #include "../common/hash.h"
 #include "../common/map.h"
 #include "../common/error.h"
+#include <ctype.h>
+#include <string.h>
 #include <stdlib.h>
 
 typedef struct label_s label_t;
@@ -40,6 +42,7 @@ void gen_stmt(stmt_t *stmt);
 void gen_if(stmt_t *stmt);
 void gen_while(stmt_t *stmt);
 void gen_ret(stmt_t *stmt);
+void gen_asm(stmt_t *stmt);
 
 void gen_expr(expr_t *expr);
 void gen_const(expr_t *expr);
@@ -204,7 +207,7 @@ void gen_func(func_t *func)
     set_label(func->name);
     
     add_instr(ENTER);
-    add_instr(func->local_size);
+    add_instr((func->local_size + 3) & (-4));
     
     gen_param(func->params);
     
@@ -249,12 +252,73 @@ void gen_stmt(stmt_t *stmt)
     case STMT_RETURN:
       gen_ret(stmt);
       break;
+    case STMT_INLINE_ASM:
+      gen_asm(stmt);
+      break;
     default:
       error("gen_stmt", "unknown case");
       break;
     }
     
     stmt = stmt->next;
+  }
+}
+
+int sub_str_match_lhs(char *lhs, char *rhs)
+{
+  char *c = lhs;
+  
+  int i = 0;
+  while (*c) {
+    if (*c++ != rhs[i++])
+      return 0;
+  }
+  
+  return 1;
+}
+
+void gen_asm(stmt_t *stmt)
+{
+  char *c = stmt->inline_asm_stmt.code;
+  
+  while (*c) {
+    switch (*c) {
+    case ' ':
+    case '\n':
+      *c++;
+      break;
+    default:
+      if (isdigit(*c) || *c == '-') {
+        int signedness = 1;
+        
+        if (*c == '-') {
+          signedness = -1;
+          c++;
+        }
+        
+        int sum = 0;
+        while (isdigit(*c)) {
+          sum = sum * 10 + *c - '0';
+          c++;
+        }
+        
+        add_instr(sum);
+      } else {
+        int match_keyword = 0; // lazy lol
+        for (int i = 0; i < num_instr_tbl; i++) {
+          if (sub_str_match_lhs(instr_tbl[i], c)) {
+            match_keyword = 1;
+            add_instr(i);
+            c += strlen(instr_tbl[i]);
+            break;
+          }
+        }
+        
+        if (!match_keyword)
+          error("gen_asm", "unknown character or keyword");
+      }
+      break;
+    }
   }
 }
 
@@ -482,7 +546,18 @@ void gen_binop(expr_t *expr)
     gen_expr(expr->binop.rhs);
     gen_addr(expr->binop.lhs);
     
-    add_instr(STR);
+    tspec_t tspec = simplify_type_spec(&expr->type);
+    switch (tspec) {
+    case TY_I8:
+      add_instr(STR8);
+      break;
+    case TY_I32:
+      add_instr(STR);
+      break;
+    default:
+      error("gen_binop", "assign: unknown operator");
+      break;
+    }
   } else if (expr->binop.op == OPERATOR_OR || expr->binop.op == OPERATOR_AND) {
     hash_t cond_end, body_end;
     

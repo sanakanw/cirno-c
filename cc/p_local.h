@@ -19,6 +19,7 @@ dcltr_t *make_dcltr_pointer(dcltr_t *next);
 
 int is_type_match(type_t *lhs, type_t *rhs);
 int type_size(spec_t *spec, dcltr_t *dcltr);
+int type_align(spec_t *spec, dcltr_t *dcltr);
 spec_t *spec_cache_find(tspec_t tspec, struct_scope_t *struct_scope);
 struct_decl_t *find_struct_decl(struct_scope_t *struct_scope, hash_t name);
 
@@ -35,6 +36,7 @@ stmt_t *if_statement();
 stmt_t *while_statement();
 stmt_t *expression_statement();
 stmt_t *return_statement();
+stmt_t *inline_asm_statement();
 
 func_t *func_declaration();
 void struct_declarations();

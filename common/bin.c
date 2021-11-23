@@ -21,7 +21,7 @@ struct header_s {
   lump_t lumps[MAX_LUMP];
 };
 
-static const char *instr_tbl[] = {
+char *instr_tbl[] = {
   "push",
   "add",
   "sub",
@@ -29,6 +29,7 @@ static const char *instr_tbl[] = {
   "div",
   "ldr",
   "str",
+  "str8",
   "lbp",
   "enter",
   "leave",
@@ -49,8 +50,11 @@ static const char *instr_tbl[] = {
   "setle",
   "setge",
   "sx8_32",
-  "sx32_8"
+  "sx32_8",
+  "int"
 };
+
+int num_instr_tbl = sizeof(instr_tbl) / sizeof(char *);
 
 bin_t *make_bin(instr_t *instr, int num_instr, sym_t *sym, int num_sym)
 {
@@ -77,6 +81,7 @@ void bin_dump(bin_t *bin)
     case JG:
     case JLE:
     case JGE:
+    case INT:
       printf("%03i %s %i\n", i, instr_tbl[bin->instr[i]], bin->instr[i + 1]);
       i += 2;
       break;

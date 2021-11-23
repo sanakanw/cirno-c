@@ -44,7 +44,8 @@ enum token_e {
   TK_RETURN,
   TK_BREAK,
   TK_ELSE,
-  TK_STRUCT
+  TK_STRUCT,
+  TK_ASM
 };
 
 struct lex_s {

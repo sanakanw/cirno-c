@@ -45,6 +45,15 @@ stmt_t *make_ret_stmt(expr_t *value)
   return stmt;
 }
 
+stmt_t *make_inline_asm_stmt(char *code)
+{
+  stmt_t *stmt = make_stmt();
+  stmt->tstmt = STMT_INLINE_ASM;
+  stmt->inline_asm_stmt.code = code;
+  stmt->next = NULL;
+  return stmt;
+}
+
 stmt_t *statement()
 {
   stmt_t *stmt = NULL;
@@ -52,10 +61,27 @@ stmt_t *statement()
   || (stmt = while_statement())
   || (stmt = compound_statement())
   || (stmt = return_statement())
+  || (stmt = inline_asm_statement())
   || (stmt = expression_statement()))
     return stmt;
   
   return NULL;
+}
+
+stmt_t *inline_asm_statement()
+{
+  if (lex.token != TK_ASM)
+    return NULL;
+  
+  match(TK_ASM);
+  
+  match('(');
+  char *code = lex.token_str;
+  match(TK_STRING_LITERAL);
+  match(')');
+  match(';');
+  
+  return make_inline_asm_stmt(code);
 }
 
 stmt_t *compound_statement()

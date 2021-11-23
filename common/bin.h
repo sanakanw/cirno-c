@@ -20,6 +20,9 @@ struct sym_s {
   int pos;
 };
 
+extern char *instr_tbl[];
+extern int num_instr_tbl;
+
 void bin_dump(bin_t *bin);
 void bin_write(bin_t *bin, FILE *out);
 bin_t *bin_read(FILE *in);

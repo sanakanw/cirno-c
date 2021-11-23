@@ -25,6 +25,7 @@ struct vm_s {
   int call[MAX_CALL];
   int frame[MAX_FRAME];
   int *s_i32;
+  char *m_i8;
   int *m_i32;
 };
 

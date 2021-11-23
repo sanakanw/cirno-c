@@ -53,7 +53,8 @@ const char *token_str[] = {
   "while",
   "return",
   "break",
-  "else"
+  "else",
+  "asm"
 };
 
 op_t op_dict[] = {
@@ -114,7 +115,8 @@ keyword_t keyword_dict[] = {
   { "return",   TK_RETURN       },
   { "break",    TK_BREAK        },
   { "else",     TK_ELSE         },
-  { "struct",   TK_STRUCT       }
+  { "struct",   TK_STRUCT       },
+  { "asm",      TK_ASM          }
 };
 
 const int op_dict_count = sizeof(op_dict) / sizeof(op_t);
@@ -514,7 +516,7 @@ void next()
       break;
     case '"':
       read_string_literal();
-      break;
+      return;
     default:
         if (read_comment()
         || read_constant()
@@ -525,7 +527,7 @@ void next()
       token_error("unknown character: '%c (%i)', ignoring.", *lex.c, *lex.c);
       read_char();
       
-      break;
+      return;
     }
   }
 }

@@ -11,6 +11,7 @@ enum instr_e {
   DIV,
   LDR,
   STR,
+  STR8,
   LBP,
   ENTER,
   LEAVE,
@@ -31,7 +32,8 @@ enum instr_e {
   SETLE,
   SETGE,
   SX8_32,
-  SX32_8
+  SX32_8,
+  INT
 };
 
 #endif
