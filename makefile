@@ -1,9 +1,7 @@
 default: build run
 
 build:
-	gcc cc/*.c common/*.c -o 9cc 
-	gcc vm/*.c common/*.c -o 9vm
+	gcc cc/*.c common/*.c vm/*.c 9c.c -o 9c
 
 run:
-	./9cc
-	./9vm
+	./9c test.9c

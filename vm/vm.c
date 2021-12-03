@@ -12,29 +12,6 @@ enum int_code_e {
   INT_PRINT
 };
 
-int main(int argc, char **argv)
-{
-  FILE *in = fopen("test.out", "rb");
-  
-  hash_init();
-  
-  hash_value("main");
-  
-  bin_t *bin = bin_read(in);
-  // bin_dump(bin);
-  
-  vm_t *vm = make_vm();
-  vm_load(vm, bin);
-  
-  vm_exec(vm);
-  
-  fclose(in);
-  
-  /*
-  for (int i = MAX_MEM - 1; i >= MAX_MEM - 8; i--)
-    printf("%i %i\n", i * sizeof(int), vm->mem[i]);*/
-}
-
 vm_t *make_vm()
 {
   vm_t *vm = malloc(sizeof(vm_t));

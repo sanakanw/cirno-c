@@ -334,10 +334,25 @@ void gen_ret(stmt_t *stmt)
 
 void gen_if(stmt_t *stmt)
 {
+  if (!stmt)
+    return;
+  
   hash_t end_lbl = tmp_label();
   
-  gen_condition(stmt->if_stmt.cond, end_lbl);
-  gen_stmt(stmt->if_stmt.body);
+  while (stmt) {
+    hash_t cond_end_lbl = tmp_label();
+    
+    gen_condition(stmt->if_stmt.cond, cond_end_lbl);
+    gen_stmt(stmt->if_stmt.body);
+    gen_instr_label(JMP, end_lbl);
+    
+    set_label(cond_end_lbl);
+    
+    if (stmt->if_stmt.else_body)
+      gen_stmt(stmt->if_stmt.else_body);
+    
+    stmt = stmt->if_stmt.next_if;
+  }
   
   set_label(end_lbl);
 }

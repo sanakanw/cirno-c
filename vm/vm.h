@@ -3,7 +3,7 @@
 
 #define KB(B) (B * 1024)
 
-#define MAX_STACK 64
+#define MAX_STACK 128
 #define MAX_CALL 64
 #define MAX_MEM 64
 #define MAX_CALL 64

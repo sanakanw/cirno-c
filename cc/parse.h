@@ -169,6 +169,8 @@ struct stmt_s {
     struct {
       expr_t *cond;
       stmt_t *body;
+      stmt_t *next_if;
+      stmt_t *else_body;
     } if_stmt;
     struct {
       expr_t *cond;

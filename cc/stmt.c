@@ -26,12 +26,14 @@ stmt_t *make_while_stmt(expr_t *cond, stmt_t *body)
   return stmt;
 }
 
-stmt_t *make_if_stmt(expr_t *cond, stmt_t *body)
+stmt_t *make_if_stmt(expr_t *cond, stmt_t *body, stmt_t *next_if, stmt_t *else_body)
 {
   stmt_t *stmt = make_stmt();
   stmt->tstmt = STMT_IF;
   stmt->if_stmt.cond = cond;
   stmt->if_stmt.body = body;
+  stmt->if_stmt.next_if = next_if;
+  stmt->if_stmt.else_body = else_body;
   stmt->next = NULL;
   return stmt;
 }
@@ -145,7 +147,16 @@ stmt_t *if_statement()
   
   stmt_t *body = statement();
   
-  return make_if_stmt(cond, body);
+  if (lex.token == TK_ELSE) {
+    match(TK_ELSE);
+    
+    if (lex.token == TK_IF)
+      return make_if_stmt(cond, body, if_statement(), NULL);
+    else
+      return make_if_stmt(cond, body, NULL, statement());
+  }
+  
+  return make_if_stmt(cond, body, NULL, NULL);
 }
 
 stmt_t *while_statement()

@@ -466,8 +466,8 @@ expr_t *binop(int level)
         return make_binop(lhs, OPERATOR_ASSIGN, make_binop(lhs, op, rhs));
     }
   } else {
-    if (read_expr_op(&op, level))
-      return make_binop(lhs, op, binop(level + 1));
+    while (read_expr_op(&op, level))
+      lhs = make_binop(lhs, op, binop(level + 1));
   }
   
   return lhs;
