@@ -161,21 +161,18 @@ sym_t *add_sym(hash_t name)
   if (sym_ptr >= &sym_buf[max_sym])
     error("add_sym", "ran out of memory");
   
-  sym_t *cache = sym_ptr;
-  
   sym_ptr->name = name;
   sym_ptr->pos = instr_ptr - instr_buf;
-  sym_ptr++;
   
-  return cache;
+  return sym_ptr++;
 }
 
 bin_t *gen(unit_t *unit)
 {
-  instr_buf = malloc(max_instr);
+  instr_buf = malloc(max_instr * sizeof(instr_t));
   instr_ptr = instr_buf;
   
-  sym_buf = malloc(max_sym);
+  sym_buf = malloc(max_sym * sizeof(sym_t));
   sym_ptr = sym_buf;
   num_lbl = 0;
   
@@ -365,6 +362,7 @@ void gen_while(stmt_t *stmt)
   set_label(cond_lbl);
   gen_condition(stmt->while_stmt.cond, end_lbl);
   gen_stmt(stmt->while_stmt.body);
+  
   gen_instr_label(JMP, cond_lbl);
   set_label(end_lbl);
 }

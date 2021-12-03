@@ -219,9 +219,10 @@ void vm_load(vm_t *vm, bin_t *bin)
 
 sym_t *find_sym(bin_t *bin, hash_t hash)
 {
-  for (int i = 0; i < bin->num_sym; i++)
+  for (int i = 0; i < bin->num_sym; i++) {
     if (bin->sym[i].name == hash)
       return &bin->sym[i];
+  }
   
   return NULL;
 }
