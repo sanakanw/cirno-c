@@ -5,6 +5,8 @@
 
 #define MAX_ENTRIES 1021
 
+// TODO: global map
+
 typedef struct map_s map_t;
 
 map_t *make_map();
