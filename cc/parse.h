@@ -13,8 +13,7 @@ typedef struct type_s type_t;
 typedef struct decl_s decl_t;
 typedef struct func_s func_t;
 typedef struct param_s param_t;
-typedef struct struct_decl_s struct_decl_t;
-typedef struct struct_scope_s struct_scope_t;
+typedef struct scope_s scope_t;
 
 typedef enum operator_e operator_t;
 typedef enum texpr_e texpr_t;
@@ -39,60 +38,6 @@ enum tdcltr_e {
   DCLTR_POINTER
 };
 
-struct spec_s {
-  tspec_t tspec;
-  struct_scope_t *struct_scope;
-};
-
-struct dcltr_s {
-  tdcltr_t type;
-  
-  int size;
-  
-  dcltr_t *next;
-};
-
-struct type_s {
-  spec_t *spec;
-  dcltr_t *dcltr;
-};
-
-struct decl_s {
-  type_t type;
-  hash_t name;
-  
-  int offset;
-};
-
-struct struct_scope_s {
-  struct_decl_t *list;
-  int size;
-};
-
-struct struct_decl_s {
-  type_t type;
-  hash_t name;
-  
-  int offset;
-  
-  struct_decl_t *next;
-};
-
-struct param_s {
-  type_t type;
-  expr_t *addr;
-  param_t *next;
-};
-
-struct func_s {
-  hash_t name;
-  type_t type;
-  stmt_t *body;
-  param_t *params;
-  int local_size;
-  func_t *next;
-};
-
 
 enum operator_e {
   OPERATOR_ADD,
@@ -111,6 +56,7 @@ enum operator_e {
 };
 
 enum texpr_e {
+  EXPR_NONE,
   EXPR_CONST,
   EXPR_ADDR,
   EXPR_LOAD,
@@ -131,8 +77,54 @@ enum tstmt_e {
   STMT_IF,
   STMT_WHILE,
   STMT_RETURN,
-  STMT_INLINE_ASM,
-  STMT_DECL
+  STMT_INLINE_ASM
+};
+
+struct spec_s {
+  tspec_t tspec;
+  scope_t *struct_scope;
+};
+
+struct dcltr_s {
+  tdcltr_t type;
+  
+  int size;
+  
+  dcltr_t *next;
+};
+
+struct type_s {
+  spec_t *spec;
+  dcltr_t *dcltr;
+};
+
+struct decl_s {
+  type_t type;
+  hash_t name;
+  int offset;
+  expr_t *init;
+  decl_t *next;
+};
+
+struct param_s {
+  type_t type;
+  expr_t *addr;
+  param_t *next;
+};
+
+struct func_s {
+  hash_t name;
+  type_t type;
+  stmt_t *body;
+  param_t *params;
+  int local_size;
+  func_t *next;
+};
+
+struct scope_s {
+  map_t map;
+  taddr_t taddr;
+  int size;
 };
 
 struct expr_s {
@@ -162,6 +154,7 @@ struct expr_s {
   };
   type_t type;
   texpr_t texpr;
+  expr_t *next;
 };
 
 struct stmt_s {
@@ -193,6 +186,8 @@ struct stmt_s {
 
 struct unit_s {
   func_t *func;
+  stmt_t *stmt;
+  int global_size;
 };
 
 void decl_init();

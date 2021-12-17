@@ -457,6 +457,9 @@ int read_string_literal()
   
   lex.token_str = lex.str_ptr;
   while (*lex.c != '"') {
+    if (*lex.c == '\n')
+      ++lex.line_no;
+    
     if (*lex.c == '\\') {
       lex_putc(read_escape_sequence());
     } else {
@@ -476,14 +479,17 @@ int read_string_literal()
 
 int read_comment()
 {
-  if (lex.c[0] == '/'&& lex.c[1] == '/') {
+  if (lex.c[0] == '/' && lex.c[1] == '/') {
     count(2);
-    while (*lex.c != '\n')
+    while (*lex.c != '\n') {
       count(1);
+    }
+    count(1);
   } else if (lex.c[0] == '/' && lex.c[1] == '*') {
     count(2);
     while (lex.c[0] != '*' && lex.c[1] != '/')
       count(1);
+    count(2);
   } else {
     return 0;
   }
@@ -518,16 +524,18 @@ void next()
       read_string_literal();
       return;
     default:
-        if (read_comment()
-        || read_constant()
+      if (!read_comment()) {
+        if (read_constant()
         || read_word()
         || read_op())
           return;
-      
-      token_error("unknown character: '%c (%i)', ignoring.", *lex.c, *lex.c);
-      read_char();
-      
-      return;
+        
+        token_error("unknown character: '%c (%i)', ignoring.", *lex.c, *lex.c);
+        read_char();
+        
+        return;
+      }
+      break;
     }
   }
 }

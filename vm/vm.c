@@ -217,25 +217,11 @@ void vm_load(vm_t *vm, bin_t *bin)
   vm->ip = 0;
 }
 
-sym_t *find_sym(bin_t *bin, hash_t hash)
-{
-  for (int i = 0; i < bin->num_sym; i++) {
-    if (bin->sym[i].name == hash)
-      return &bin->sym[i];
-  }
-  
-  return NULL;
-}
-
 void vm_exec(vm_t *vm)
 {
   vm->ip = -1;
   
-  sym_t *sym = find_sym(vm->bin, hash_value("main"));
-  if (!sym)
-    error("vm_exec", "could not find entrance point 'main()'");
-  
-  vm_call(vm, sym->pos);
+  vm_call(vm, 0);
   
   while (vm->ip != -1) {
     switch (fetch(vm)) {

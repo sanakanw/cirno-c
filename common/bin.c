@@ -56,13 +56,11 @@ char *instr_tbl[] = {
 
 int num_instr_tbl = sizeof(instr_tbl) / sizeof(char *);
 
-bin_t *make_bin(instr_t *instr, int num_instr, sym_t *sym, int num_sym)
+bin_t *make_bin(instr_t *instr, int num_instr)
 {
   bin_t *bin = malloc(sizeof(bin_t));
   bin->instr = instr;
-  bin->sym = sym;
   bin->num_instr = num_instr;
-  bin->num_sym = num_sym;
   return bin;
 }
 
@@ -93,25 +91,33 @@ void bin_dump(bin_t *bin)
   }
 }
 
+void write_lump(FILE *out, header_t *header, void *src, int size, tlump_t tlump)
+{
+  header->lumps[tlump].fileofs = ftell(out);
+  header->lumps[tlump].filelen = size;
+  fwrite(src, 1, size, out);
+}
+
 void bin_write(bin_t *bin, FILE *out)
 {
-  header_t header;
-  
-  int size_sym = bin->num_sym * sizeof(sym_t);
-  int size_instr = bin->num_instr * sizeof(instr_t);
-  
   fseek(out, sizeof(header_t), SEEK_SET);
   
-  header.lumps[LUMP_SYM].fileofs = ftell(out);
-  header.lumps[LUMP_SYM].filelen = size_sym;
-  fwrite(bin->sym, 1, size_sym, out);
-  
-  header.lumps[LUMP_INSTR].fileofs = ftell(out);
-  header.lumps[LUMP_INSTR].filelen = size_instr;
-  fwrite(bin->instr, 1, size_instr, out);
+  header_t header;
+  write_lump(out, &header, bin->instr, bin->num_instr * sizeof(instr_t), LUMP_INSTR);
   
   fseek(out, 0, SEEK_SET);
   fwrite(&header, 1, sizeof(header_t), out);
+}
+
+void *copy_lump(FILE *in, header_t *header, int *size, tlump_t tlump)
+{
+  fseek(in, header->lumps[tlump].fileofs, SEEK_SET);
+  
+  *size = header->lumps[tlump].filelen;
+  char *buffer = malloc(*size);
+  fread(buffer, 1, *size, in);
+  
+  return buffer;
 }
 
 bin_t *bin_read(FILE *in)
@@ -119,13 +125,9 @@ bin_t *bin_read(FILE *in)
   header_t header;
   fread(&header, 1, sizeof(header_t), in);
   
-  int size_sym = header.lumps[LUMP_SYM].filelen;
-  sym_t *sym = malloc(size_sym);
-  fread(sym, 1, size_sym, in);
+  instr_t *instr;
+  int size_instr;
+  instr = copy_lump(in, &header, &size_instr, LUMP_INSTR);
   
-  int size_instr = header.lumps[LUMP_INSTR].filelen;
-  instr_t *instr = malloc(size_instr);
-  fread(instr, 1, size_instr, in);
-  
-  return make_bin(instr, size_instr / sizeof(instr_t), sym, size_sym / sizeof(sym_t));
+  return make_bin(instr, size_instr / sizeof(instr_t));
 }

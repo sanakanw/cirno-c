@@ -1,6 +1,6 @@
 #include "p_local.h"
 
-#define MAX_SPEC_CACHE 8
+#define MAX_SPEC_CACHE 16
 
 #include <stdlib.h>
 
@@ -8,27 +8,27 @@ spec_t *ty_u0;
 spec_t *ty_i8;
 spec_t *ty_i32;
 
-map_t *scope_local;
-map_t *scope_func;
-map_t *scope_struct;
-map_t *scope_struct_decl;
+map_t scope_func;
+map_t scope_struct;
+
+scope_t *scope_local;
+scope_t *scope_global;
 
 func_t *current_func;
-
-int local_offset = 0;
+scope_t *current_scope;
 
 spec_t spec_cache[MAX_SPEC_CACHE];
-int num_spec = 0;
+int num_spec_cache = 0;
 
 void decl_init()
 {
-  num_spec = 0;
-  local_offset = 0;
+  num_spec_cache = 0;
   
   scope_func = make_map();
-  scope_local = make_map();
   scope_struct = make_map();
-  scope_struct_decl = make_map();
+  
+  scope_local = make_scope(ADDR_LOCAL);
+  scope_global = make_scope(ADDR_GLOBAL);
   
   ty_u0 = spec_cache_find(TY_U0, NULL);
   ty_i8 = spec_cache_find(TY_I8, NULL);
@@ -42,73 +42,6 @@ dcltr_t *make_dcltr()
   return malloc(sizeof(dcltr_t));
 }
 
-dcltr_t *make_dcltr_pointer(dcltr_t *next)
-{
-  dcltr_t *dcltr = make_dcltr();
-  dcltr->type = DCLTR_POINTER;
-  dcltr->next = next;
-  return dcltr;
-}
-
-dcltr_t *make_dcltr_array(int size, dcltr_t *next)
-{
-  dcltr_t *dcltr = make_dcltr();
-  dcltr->type = DCLTR_ARRAY;
-  dcltr->size = size;
-  dcltr->next = next;
-  return dcltr;
-}
-
-decl_t *make_decl(spec_t *spec, dcltr_t *dcltr, int offset)
-{
-  decl_t *decl = malloc(sizeof(decl_t));
-  decl->type.spec = spec;
-  decl->type.dcltr = dcltr;
-  decl->offset = offset;
-  return decl;
-}
-
-param_t *make_param(spec_t *spec, dcltr_t *dcltr, expr_t *addr)
-{
-  param_t *param = malloc(sizeof(param_t));
-  param->type.spec = spec;
-  param->type.dcltr = dcltr;
-  param->addr = addr;
-  param->next = NULL;
-  return param;
-}
-
-func_t *make_func(hash_t name, type_t *type, param_t *params, stmt_t *body, int local_size)
-{
-  func_t *func = malloc(sizeof(func_t));
-  func->name = name;
-  func->type.spec = type->spec;
-  func->type.dcltr = type->dcltr;
-  func->params = params;
-  func->body = body;
-  func->local_size = local_size;
-  func->next = NULL;
-  return func;
-}
-
-struct_scope_t *make_struct_scope()
-{
-  struct_scope_t *struct_scope = malloc(sizeof(struct_scope_t));
-  struct_scope->list = NULL;
-  struct_scope->size = 0;
-  return struct_scope;
-}
-
-struct_decl_t *make_struct_decl(spec_t *spec, dcltr_t *dcltr, int offset, hash_t name, struct_decl_t *next)
-{
-  struct_decl_t *struct_decl = malloc(sizeof(struct_decl_t));
-  struct_decl->type.spec = spec;
-  struct_decl->type.dcltr = dcltr;
-  struct_decl->offset = offset;
-  struct_decl->name = name;
-  struct_decl->next = next;
-  return struct_decl;
-}
 
 int is_type_match(type_t *lhs, type_t *rhs)
 {
@@ -206,50 +139,53 @@ int type_size(spec_t *spec, dcltr_t *dcltr)
 func_t *func_declaration()
 {
   if (lex.token != TK_FN)
-    return 0;
+    return NULL;
   
   match(TK_FN);
   
   hash_t name = lex.token_hash;
   match(TK_IDENTIFIER);
   
+  type_t type = { 0 };
+  
+  param_t *params = func_params();
+  func_type(&type);
+  
+  func_t *func = make_func(name, &type, params, NULL, 0);
+  map_put(scope_func, name, func);
+  
+  current_func = func;
+  current_scope = scope_local;
+  
+  func->body = statement();
+  
+  current_func = NULL;
+  current_scope = scope_global;
+  
+  func->local_size = scope_local->size;
+  
+  map_flush(scope_local->map);
+  scope_local->size = 0;
+  
+  return func;
+}
+
+void func_type(type_t *type)
+{
+  if (lex.token == ':') {
+    match(':');
+    if (!type_name(type))
+      token_error("expected type-name");
+  }
+}
+
+param_t *func_params()
+{
   match('(');
   param_t *params = param_type_list();
   match(')');
   
-  type_t type = { 0 };
-  if (lex.token == ':') {
-    match(':');
-    if (!type_name(&type))
-      token_error("expected type-name");
-  }
-  
-  func_t *func = make_func(name, &type, params, NULL, 0);
-  
-  current_func = func;
-  
-  map_put(scope_func, name, func);
-  
-  match('{');
-  
-  local_declarations(params);
-  
-  stmt_t *body, *head;
-  body = head = statement();
-  while (lex.token != '}')
-    head = head->next = statement();
-  
-  match('}');
-  
-  func->body = body;
-  func->local_size = local_offset;
-  
-  map_flush(scope_local);
-  local_offset = 0;
-  
-  current_func = NULL;
-  
-  return func;
+  return params;
 }
 
 param_t *param_type_list()
@@ -269,27 +205,16 @@ param_t *param_type_list()
 
 param_t *param_declaration()
 {
-  hash_t name;
-  
   spec_t *spec = specifiers();
   if (!spec)
     return NULL;
   
+  hash_t name;
   dcltr_t *dcltr = direct_declarator(&name);
-  decl_t *decl = insert_decl(spec, dcltr, name);
+  decl_t *decl = insert_decl(scope_local, spec, dcltr, NULL, name);
   expr_t *addr = make_addr(make_const(decl->offset), ADDR_LOCAL, &decl->type);
   
   return make_param(spec, dcltr, addr);
-}
-
-void local_declarations(param_t *params)
-{
-  while (local_declaration());
-}
-
-void struct_declarations()
-{
-  while (struct_declaration());
 }
 
 int struct_declaration()
@@ -302,11 +227,12 @@ int struct_declaration()
   hash_t name = lex.token_hash;
   match(TK_IDENTIFIER);
   
-  struct_scope_t *struct_scope = make_struct_scope();
+  scope_t *struct_scope = make_scope(ADDR_LOCAL);
   
   match('{');
   while (struct_member_declaration(struct_scope));
   match('}');
+  
   match(';');
   
   if (!map_put(scope_struct, name, struct_scope))
@@ -315,21 +241,23 @@ int struct_declaration()
   return 1;
 }
 
-int struct_member_declaration(struct_scope_t *struct_scope)
+decl_t *struct_member_declaration(scope_t *scope)
 {
   hash_t name;
   
   spec_t *spec = specifiers();
-  
   if (!spec)
-    return 0;
+    return NULL;
   
+  decl_t *body = NULL, *head = NULL, *decl = NULL;
   while (1) {
     dcltr_t *dcltr = direct_declarator(&name);
     
-    struct_decl_t *struct_decl = make_struct_decl(spec, dcltr, struct_scope->size, name, struct_scope->list);
-    struct_scope->size += type_size(spec, dcltr);
-    struct_scope->list = struct_decl;
+    decl = insert_decl(scope, spec, dcltr, NULL, name);
+    if (body)
+      head = head->next = decl;
+    else
+      body = head = decl;
     
     if (lex.token == ',')
       match(',');
@@ -339,21 +267,32 @@ int struct_member_declaration(struct_scope_t *struct_scope)
   
   match(';');
   
-  return 1;
+  return decl;
 }
 
-int local_declaration()
+decl_t *declaration(scope_t *scope)
 {
   hash_t name;
   
   spec_t *spec = specifiers();
-  
   if (!spec)
-    return 0;
+    return NULL;
   
+  decl_t *body = NULL, *head = NULL, *decl = NULL;
   while (1) {
     dcltr_t *dcltr = direct_declarator(&name);
-    insert_decl(spec, dcltr, name);
+    
+    expr_t *init = NULL;
+    if (lex.token == '=') {
+      match('=');
+      init = expression();
+    }
+    
+    decl = insert_decl(scope, spec, dcltr, init, name);
+    if (body)
+      head = head->next = decl;
+    else
+      body = head = decl;
     
     if (lex.token == ',')
       match(',');
@@ -363,15 +302,18 @@ int local_declaration()
   
   match(';');
   
-  return 1;
+  return body;
 }
 
-decl_t *insert_decl(spec_t *spec, dcltr_t *dcltr, hash_t name)
+decl_t *insert_decl(scope_t *scope, spec_t *spec, dcltr_t *dcltr, expr_t *init, hash_t name)
 {
-  decl_t *decl = make_decl(spec, dcltr, local_offset);
-  local_offset = (local_offset + type_align(spec, dcltr) - 1) & ~(type_align(spec, dcltr) - 1);
-  local_offset += type_size(spec, dcltr);
-  map_put(scope_local, name, decl);
+  int align = type_align(spec, dcltr) - 1;
+  
+  decl_t *decl = make_decl(spec, dcltr, init, scope->size);
+  scope->size = (scope->size + align) & ~align;
+  scope->size += type_size(spec, dcltr);
+  map_put(scope->map, name, decl);
+  
   return decl;
 }
 
@@ -474,7 +416,7 @@ dcltr_t *pointer()
 spec_t *specifiers()
 {
   tspec_t tspec;
-  struct_scope_t *struct_scope = NULL;
+  scope_t *struct_scope = NULL;
   switch (lex.token) {
   case TK_I8:
     tspec = TY_I8;
@@ -497,29 +439,78 @@ spec_t *specifiers()
   return spec_cache_find(tspec, struct_scope);
 }
 
-struct_decl_t *find_struct_decl(struct_scope_t *struct_scope, hash_t name)
+spec_t *spec_cache_find(tspec_t tspec, scope_t *struct_scope)
 {
-  struct_decl_t *struct_decl = struct_scope->list;
-  
-  while (struct_decl) {
-    if (struct_decl->name == name)
-      return struct_decl;
-    struct_decl = struct_decl->next;
-  }
-  
-  return NULL;
-}
-
-spec_t *spec_cache_find(tspec_t tspec, struct_scope_t *struct_scope)
-{
-  for (int i = 0; i < num_spec; i++) {
+  for (int i = 0; i < num_spec_cache; i++) {
     if (spec_cache[i].tspec == tspec && spec_cache[i].struct_scope == struct_scope)
       return &spec_cache[i];
   }
   
-  spec_t *spec = &spec_cache[++num_spec];
+  spec_t *spec = &spec_cache[num_spec_cache];
   spec->tspec = tspec;
   spec->struct_scope = struct_scope;
   
+  num_spec_cache = ++num_spec_cache & (MAX_SPEC_CACHE - 1);
+  
   return spec;
+}
+
+scope_t *make_scope(taddr_t taddr)
+{
+  scope_t *scope = malloc(sizeof(scope_t));
+  scope->map = make_map();
+  scope->taddr = taddr;
+  scope->size = 0;
+  return scope;
+}
+
+dcltr_t *make_dcltr_pointer(dcltr_t *next)
+{
+  dcltr_t *dcltr = make_dcltr();
+  dcltr->type = DCLTR_POINTER;
+  dcltr->next = next;
+  return dcltr;
+}
+
+dcltr_t *make_dcltr_array(int size, dcltr_t *next)
+{
+  dcltr_t *dcltr = make_dcltr();
+  dcltr->type = DCLTR_ARRAY;
+  dcltr->size = size;
+  dcltr->next = next;
+  return dcltr;
+}
+
+decl_t *make_decl(spec_t *spec, dcltr_t *dcltr, expr_t *init, int offset)
+{
+  decl_t *decl = malloc(sizeof(decl_t));
+  decl->type.spec = spec;
+  decl->type.dcltr = dcltr;
+  decl->offset = offset;
+  decl->init = init;
+  decl->next = NULL;
+  return decl;
+}
+
+param_t *make_param(spec_t *spec, dcltr_t *dcltr, expr_t *addr)
+{
+  param_t *param = malloc(sizeof(param_t));
+  param->type.spec = spec;
+  param->type.dcltr = dcltr;
+  param->addr = addr;
+  param->next = NULL;
+  return param;
+}
+
+func_t *make_func(hash_t name, type_t *type, param_t *params, stmt_t *body, int local_size)
+{
+  func_t *func = malloc(sizeof(func_t));
+  func->name = name;
+  func->type.spec = type->spec;
+  func->type.dcltr = type->dcltr;
+  func->params = params;
+  func->body = body;
+  func->local_size = local_size;
+  func->next = NULL;
+  return func;
 }

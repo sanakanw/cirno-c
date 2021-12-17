@@ -32,111 +32,6 @@ opset_t opset_dict[] = {
 
 int num_opset_dict = sizeof(opset_dict) / sizeof(opset_t);
 
-expr_t *make_expr()
-{
-  return malloc(sizeof(expr_t));
-}
-
-expr_t *make_const(int num)
-{
-  expr_t *expr = make_expr();
-  expr->texpr = EXPR_CONST;
-  expr->num = num;
-  expr->type.spec = ty_i32;
-  expr->type.dcltr = NULL;
-  return expr;
-}
-
-expr_t *make_addr(expr_t *base, taddr_t taddr, type_t *type)
-{
-  expr_t *expr = make_expr();
-  expr->texpr = EXPR_ADDR;
-  expr->addr.base = base;
-  expr->addr.taddr = taddr;
-  expr->type.spec = type->spec;
-  expr->type.dcltr = type->dcltr;
-  return expr;
-}
-
-expr_t *make_load(expr_t *base, taddr_t taddr, type_t *type)
-{
-  expr_t *expr = make_expr();
-  expr->texpr = EXPR_LOAD;
-  expr->addr.base = base;
-  expr->addr.taddr = taddr;
-  expr->type.spec = type->spec;
-  expr->type.dcltr = type->dcltr;
-  return expr;
-}
-
-expr_t *make_cast_expr(type_t *type, expr_t *base)
-{
-  expr_t *expr = make_expr();
-  expr->texpr = EXPR_CAST;
-  expr->unary.base = base;
-  expr->type.spec = type->spec;
-  expr->type.dcltr = type->dcltr;
-  return expr;
-}
-
-expr_t *make_func_expr(func_t *func)
-{
-  expr_t *expr = make_expr();
-  expr->texpr = EXPR_FUNC;
-  expr->func.func = func;
-  expr->type.spec = spec_cache_find(TY_FUNC, NULL);
-  expr->type.dcltr = NULL;
-  return expr;
-}
-
-expr_t *make_call(expr_t *func, expr_t *arg)
-{
-  expr_t *expr = make_expr();
-  expr->texpr = EXPR_CALL;
-  expr->post.base = func;
-  expr->post.post = arg;
-  expr->type.spec = func->func.func->type.spec;
-  expr->type.dcltr = func->func.func->type.dcltr;
-  return expr;
-}
-
-expr_t *make_arg(expr_t *base)
-{
-  expr_t *expr = make_expr();
-  expr->texpr = EXPR_ARG;
-  expr->arg.base = base;
-  expr->arg.next = NULL;
-  return expr;
-}
-
-expr_t *make_binop(expr_t *lhs, operator_t op, expr_t *rhs)
-{
-  if (lhs->texpr == EXPR_CONST && rhs->texpr == EXPR_CONST) {
-    switch (op) {
-    case OPERATOR_ADD:
-      return make_const(lhs->num + rhs->num);
-    case OPERATOR_SUB:
-      return make_const(lhs->num - rhs->num);
-    case OPERATOR_MUL:
-      return make_const(lhs->num * rhs->num);
-    case OPERATOR_DIV:
-      return make_const(lhs->num / rhs->num);
-    default:
-      token_error("unknown operator");
-      break;
-    }
-  }
-  
-  expr_t *expr = make_expr();
-  expr->texpr = EXPR_BINOP;
-  expr->binop.op = op;
-  expr->binop.lhs = lhs;
-  expr->binop.rhs = rhs;
-  expr->type.spec = lhs->type.spec;
-  expr->type.dcltr = lhs->type.dcltr;
-  return expr;
-}
-
 int read_assign_op(operator_t *op)
 {
   switch (lex.token) {
@@ -247,14 +142,18 @@ expr_t *find_identifier()
   
   decl_t *decl;
   func_t *func;
-  if ((decl = map_get(scope_local, name))) {
+  if ((decl = map_get(scope_local->map, name))) {
     match(TK_IDENTIFIER);
     return make_load(make_const(decl->offset), ADDR_LOCAL, &decl->type);
+  } else if ((decl = map_get(scope_global->map, name))) {
+    match(TK_IDENTIFIER);
+    return make_load(make_const(decl->offset), ADDR_GLOBAL, &decl->type);
   } else if ((func = map_get(scope_func, name))) {
     match(TK_IDENTIFIER);
     return make_func_expr(func);
   } else {
     token_error("'%n' undeclared");
+    return NULL;
   }
 }
 
@@ -330,7 +229,7 @@ expr_t *postfix()
       if (is_pointer(expr))
         token_error("cannot use '.' operator on struct-pointer; did you mean '->'?");
       
-      struct_decl_t *struct_decl = find_struct_decl(expr->type.spec->struct_scope, name);
+      decl_t *struct_decl = map_get(expr->type.spec->struct_scope->map, name);
       
       expr_t *base = make_binop(expr->addr.base, OPERATOR_ADD, make_const(struct_decl->offset));
       expr = make_load(base, expr->addr.taddr, &struct_decl->type);
@@ -346,7 +245,7 @@ expr_t *postfix()
       if (!is_pointer(expr))
         token_error("cannot use '->' operator on non-struct-pointer; did you mean '.'?");
       
-      struct_decl_t *struct_decl = find_struct_decl(expr->type.spec->struct_scope, name);
+      decl_t *struct_decl = map_get(expr->type.spec->struct_scope->map, name);
       
       expr_t *base = make_binop(expr, OPERATOR_ADD, make_const(struct_decl->offset));
       expr = make_load(base, ADDR_GLOBAL, &struct_decl->type);
@@ -362,7 +261,7 @@ expr_t *arg_expr_list()
 {
   expr_t *args, *head, *base;
   
-  base = expression(ORDER_ASSIGNMENT);
+  base = binop(ORDER_ASSIGNMENT);
   if (!base)
     return NULL;
   
@@ -371,7 +270,7 @@ expr_t *arg_expr_list()
   while (lex.token == ',') {
     match(',');
     
-    base = expression(ORDER_ASSIGNMENT);
+    base = binop(ORDER_ASSIGNMENT);
     if (!head)
       token_error("expected expression");
     
@@ -475,7 +374,18 @@ expr_t *binop(int level)
 
 expr_t *expression()
 {
-  return binop(ORDER_ASSIGNMENT);
+  expr_t *head = NULL, *body = NULL;
+  
+  body = head = binop(ORDER_ASSIGNMENT);
+  if (!body)
+    return NULL;
+  
+  while (lex.token == ',') {
+    match(',');
+    head = head->next = binop(ORDER_ASSIGNMENT);
+  }
+  
+  return body;
 }
 
 int constant_expression(int *num)
@@ -489,3 +399,112 @@ int constant_expression(int *num)
   
   return 1;
 }
+
+expr_t *make_expr()
+{
+  expr_t *expr = malloc(sizeof(expr_t));
+  expr->next = NULL;
+  expr->texpr = EXPR_NONE;
+  return expr;
+}
+
+expr_t *make_const(int num)
+{
+  expr_t *expr = make_expr();
+  expr->texpr = EXPR_CONST;
+  expr->num = num;
+  expr->type.spec = ty_i32;
+  expr->type.dcltr = NULL;
+  return expr;
+}
+
+expr_t *make_addr(expr_t *base, taddr_t taddr, type_t *type)
+{
+  expr_t *expr = make_expr();
+  expr->texpr = EXPR_ADDR;
+  expr->addr.base = base;
+  expr->addr.taddr = taddr;
+  expr->type.spec = type->spec;
+  expr->type.dcltr = type->dcltr;
+  return expr;
+}
+
+expr_t *make_load(expr_t *base, taddr_t taddr, type_t *type)
+{
+  expr_t *expr = make_expr();
+  expr->texpr = EXPR_LOAD;
+  expr->addr.base = base;
+  expr->addr.taddr = taddr;
+  expr->type.spec = type->spec;
+  expr->type.dcltr = type->dcltr;
+  return expr;
+}
+
+expr_t *make_cast_expr(type_t *type, expr_t *base)
+{
+  expr_t *expr = make_expr();
+  expr->texpr = EXPR_CAST;
+  expr->unary.base = base;
+  expr->type.spec = type->spec;
+  expr->type.dcltr = type->dcltr;
+  return expr;
+}
+
+expr_t *make_func_expr(func_t *func)
+{
+  expr_t *expr = make_expr();
+  expr->texpr = EXPR_FUNC;
+  expr->func.func = func;
+  expr->type.spec = spec_cache_find(TY_FUNC, NULL);
+  expr->type.dcltr = NULL;
+  return expr;
+}
+
+expr_t *make_call(expr_t *func, expr_t *arg)
+{
+  expr_t *expr = make_expr();
+  expr->texpr = EXPR_CALL;
+  expr->post.base = func;
+  expr->post.post = arg;
+  expr->type.spec = func->func.func->type.spec;
+  expr->type.dcltr = func->func.func->type.dcltr;
+  return expr;
+}
+
+expr_t *make_arg(expr_t *base)
+{
+  expr_t *expr = make_expr();
+  expr->texpr = EXPR_ARG;
+  expr->arg.base = base;
+  expr->arg.next = NULL;
+  return expr;
+}
+
+expr_t *make_binop(expr_t *lhs, operator_t op, expr_t *rhs)
+{
+  if (lhs->texpr == EXPR_CONST && rhs->texpr == EXPR_CONST) {
+    switch (op) {
+    case OPERATOR_ADD:
+      return make_const(lhs->num + rhs->num);
+    case OPERATOR_SUB:
+      return make_const(lhs->num - rhs->num);
+    case OPERATOR_MUL:
+      return make_const(lhs->num * rhs->num);
+    case OPERATOR_DIV:
+      return make_const(lhs->num / rhs->num);
+    default:
+      token_error("unknown operator");
+      break;
+    }
+  }
+  
+  expr_t *expr = make_expr();
+  expr->texpr = EXPR_BINOP;
+  expr->binop.op = op;
+  expr->binop.lhs = lhs;
+  expr->binop.rhs = rhs;
+  expr->type.spec = lhs->type.spec;
+  expr->type.dcltr = lhs->type.dcltr;
+  return expr;
+}
+

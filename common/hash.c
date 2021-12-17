@@ -11,7 +11,7 @@ static int str_size;
 static char *str_buf;
 static char *str_ptr;
 
-static map_t *str_map;
+static map_t str_map;
 
 void hash_init()
 {

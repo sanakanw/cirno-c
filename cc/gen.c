@@ -12,28 +12,30 @@ typedef struct replace_s replace_t;
 
 struct label_s {
   hash_t name;
-  instr_t *pos;
+  int pos;
   label_t *next;
 };
 
 struct replace_s {
-  instr_t *pos;
+  int pos;
   replace_t *next;
 };
 
-static instr_t *instr_buf = NULL, *instr_ptr = NULL;
-static sym_t *sym_buf = NULL, *sym_ptr = NULL;
-static int max_instr = 1024;
-static int max_sym = 32;
+static instr_t *instr_buf = NULL;
+static int num_instr = 0, max_instr = 1024;
 static int num_lbl = 0;
 
 static int func_active = 0;
 static hash_t ret_lbl;
 
-static map_t *map_replace;
+static map_t map_replace;
 static label_t *label_list;
 
-void gen_jmp_hash(hash_t lbl);
+int emit_instr(instr_t instr);
+void emit_jmp_hash(hash_t lbl);
+void emit_instr_label(instr_t instr, hash_t lbl);
+void emit_frame_enter(int size);
+void emit_frame_leave();
 
 void gen_func(func_t *func);
 void gen_param(param_t *param);
@@ -43,154 +45,54 @@ void gen_if(stmt_t *stmt);
 void gen_while(stmt_t *stmt);
 void gen_ret(stmt_t *stmt);
 void gen_asm(stmt_t *stmt);
+void gen_decl(stmt_t *stmt);
 
 void gen_expr(expr_t *expr);
 void gen_const(expr_t *expr);
 void gen_addr(expr_t *expr);
 void gen_call(expr_t *expr);
 void gen_load(expr_t *expr);
-void gen_binop(expr_t *expr);
 void gen_cast(expr_t *expr);
+
+void gen_binop(expr_t *expr);
+void gen_binop_assign(expr_t *expr);
+void gen_binop_cond(expr_t *expr);
+void gen_binop_math(expr_t *expr);
 
 void gen_condition(expr_t *expr, hash_t end);
 
-label_t *make_label(hash_t name, instr_t *pos)
-{
-  label_t *label = malloc(sizeof(label_t));
-  label->name = name;
-  label->pos = pos;
-  label->next = NULL;
-  return label;
-}
-
-replace_t *make_replace(instr_t *pos)
-{
-  replace_t *replace = malloc(sizeof(replace_t));
-  replace->pos = pos;
-  replace->next = NULL;
-  return replace;
-}
-
-hash_t tmp_label()
-{
-  char name[32];
-  
-  sprintf(name, ":_%lu", num_lbl++);
-  
-  return hash_value(name);
-}
-
-void set_label(hash_t name)
-{
-  if (label_list) {
-    label_t *head = label_list;
-    while (head->next) {
-      if (name == head->name)
-        error("duplicate label '%s'", hash_get(name));
-      
-      head = head->next;
-    }
-    
-    if (name == head->name)
-      error("duplicate label '%s'", hash_get(name));
-    
-    head->next = make_label(name, instr_ptr);
-  } else {
-    label_list = make_label(name, instr_ptr);
-  }
-}
-
-void add_replace(hash_t name, instr_t *pos)
-{
-  replace_t *replace = map_get(map_replace, name);
-  
-  if (replace) {
-    replace_t *head = replace;
-    
-    while (head->next)
-      head = head->next;
-    
-    head->next = make_replace(pos);
-  } else {
-    map_put(map_replace, name, make_replace(pos));
-  }
-}
-
-void replace_all()
-{
-  label_t *label = label_list;
-  while (label) {
-    replace_t *replace = map_get(map_replace, label->name);
-    
-    while (replace) {
-      *replace->pos = label->pos - instr_buf;
-      
-      replace = replace->next;
-    }
-    
-    label  = label->next;
-  }
-}
-
-tspec_t simplify_type_spec(type_t *type)
-{
-  if (type->dcltr) {
-    switch (type->dcltr->type) {
-    case DCLTR_POINTER:
-      return TY_I32;
-    }
-  }
-  
-  return type->spec->tspec;
-}
-
-instr_t *add_instr(instr_t instr)
-{
-  if (instr_ptr >= &instr_buf[max_instr])
-    error("add_instr", "ran out of memory");
-  
-  instr_t *cache = instr_ptr;
-  
-  *instr_ptr++ = instr;
-  
-  return cache;
-}
-
-sym_t *add_sym(hash_t name)
-{
-  if (sym_ptr >= &sym_buf[max_sym])
-    error("add_sym", "ran out of memory");
-  
-  sym_ptr->name = name;
-  sym_ptr->pos = instr_ptr - instr_buf;
-  
-  return sym_ptr++;
-}
+label_t *make_label(hash_t name, int pos);
+replace_t *make_replace(int pos);
+hash_t tmp_label();
+void set_label(hash_t name);
+void add_replace(hash_t name, int pos);
+void replace_all();
+tspec_t simplify_type_spec(type_t *type);
+int sub_str_match_lhs(char *lhs, char *rhs);
 
 bin_t *gen(unit_t *unit)
 {
-  instr_buf = malloc(max_instr * sizeof(instr_t));
-  instr_ptr = instr_buf;
-  
-  sym_buf = malloc(max_sym * sizeof(sym_t));
-  sym_ptr = sym_buf;
+  max_instr = 1024;
   num_lbl = 0;
+  num_instr = 0;
+  
+  instr_buf = malloc(max_instr * sizeof(instr_t));
   
   map_replace = make_map();
+  
+  emit_instr(ENTER);
+  emit_instr((unit->global_size + 3) & (~3));
+  
+  gen_stmt(unit->stmt);
+  
+  emit_instr(LEAVE);
+  emit_instr(RET);
   
   gen_func(unit->func);
   
   replace_all();
   
-  return make_bin(instr_buf, instr_ptr - instr_buf, sym_buf, sym_ptr - sym_buf);
-}
-
-void gen_instr_label(instr_t instr, hash_t lbl)
-{
-  add_instr(instr);
-  instr_t *pos = add_instr(0);
-  
-  add_replace(lbl, pos);
+  return make_bin(instr_buf, num_instr);
 }
 
 void gen_func(func_t *func)
@@ -200,20 +102,15 @@ void gen_func(func_t *func)
   while (func) {
     ret_lbl = tmp_label();
     
-    add_sym(func->name);
     set_label(func->name);
     
-    add_instr(ENTER);
-    add_instr((func->local_size + 3) & (-4));
+    emit_frame_enter(func->local_size);
     
     gen_param(func->params);
-    
     gen_stmt(func->body);
     
     set_label(ret_lbl);
-    
-    add_instr(LEAVE);
-    add_instr(RET);
+    emit_frame_leave();
     
     func = func->next;
   }
@@ -230,7 +127,7 @@ void gen_param(param_t *param)
     gen_param(param->next);
   
   gen_addr(param->addr);
-  add_instr(STR);
+  emit_instr(STR);
 }
 
 void gen_stmt(stmt_t *stmt)
@@ -261,19 +158,6 @@ void gen_stmt(stmt_t *stmt)
   }
 }
 
-int sub_str_match_lhs(char *lhs, char *rhs)
-{
-  char *c = lhs;
-  
-  int i = 0;
-  while (*c) {
-    if (*c++ != rhs[i++])
-      return 0;
-  }
-  
-  return 1;
-}
-
 void gen_asm(stmt_t *stmt)
 {
   char *c = stmt->inline_asm_stmt.code;
@@ -299,13 +183,13 @@ void gen_asm(stmt_t *stmt)
           c++;
         }
         
-        add_instr(sum);
+        emit_instr(sum);
       } else {
-        int match_keyword = 0; // lazy lol
+        int match_keyword = 0;
         for (int i = 0; i < num_instr_tbl; i++) {
           if (sub_str_match_lhs(instr_tbl[i], c)) {
             match_keyword = 1;
-            add_instr(i);
+            emit_instr(i);
             c += strlen(instr_tbl[i]);
             break;
           }
@@ -326,7 +210,7 @@ void gen_ret(stmt_t *stmt)
   
   gen_expr(stmt->ret_stmt.value);
   
-  gen_instr_label(JMP, ret_lbl);
+  emit_instr_label(JMP, ret_lbl);
 }
 
 void gen_if(stmt_t *stmt)
@@ -341,7 +225,7 @@ void gen_if(stmt_t *stmt)
     
     gen_condition(stmt->if_stmt.cond, cond_end_lbl);
     gen_stmt(stmt->if_stmt.body);
-    gen_instr_label(JMP, end_lbl);
+    emit_instr_label(JMP, end_lbl);
     
     set_label(cond_end_lbl);
     
@@ -363,7 +247,7 @@ void gen_while(stmt_t *stmt)
   gen_condition(stmt->while_stmt.cond, end_lbl);
   gen_stmt(stmt->while_stmt.body);
   
-  gen_instr_label(JMP, cond_lbl);
+  emit_instr_label(JMP, cond_lbl);
   set_label(end_lbl);
 }
 
@@ -372,28 +256,32 @@ void gen_expr(expr_t *expr)
   if (!expr)
     return;
   
-  switch (expr->texpr) {
-  case EXPR_CONST:
-    gen_const(expr);
-    break;
-  case EXPR_ADDR:
-    gen_addr(expr);
-    break;
-  case EXPR_LOAD:
-    gen_load(expr);
-    break;
-  case EXPR_BINOP:
-    gen_binop(expr);
-    break;
-  case EXPR_CALL:
-    gen_call(expr);
-    break;
-  case EXPR_CAST:
-    gen_cast(expr);
-    break;
-  default:
-    error("gen_expr", "unknown case");
-    break;
+  while (expr) {
+    switch (expr->texpr) {
+    case EXPR_CONST:
+      gen_const(expr);
+      break;
+    case EXPR_ADDR:
+      gen_addr(expr);
+      break;
+    case EXPR_LOAD:
+      gen_load(expr);
+      break;
+    case EXPR_BINOP:
+      gen_binop(expr);
+      break;
+    case EXPR_CALL:
+      gen_call(expr);
+      break;
+    case EXPR_CAST:
+      gen_cast(expr);
+      break;
+    default:
+      error("gen_expr", "unknown case");
+      break;
+    }
+    
+    expr = expr->next;
   }
 }
 
@@ -412,7 +300,7 @@ void gen_cast(expr_t *expr)
     case TY_I8:
       break;
     case TY_I32:
-      add_instr(SX32_8);
+      emit_instr(SX32_8);
       break;
     case TY_STRUCT:
       break;
@@ -421,7 +309,7 @@ void gen_cast(expr_t *expr)
   case TY_I32:
     switch (type_b) {
     case TY_I8:
-      add_instr(SX8_32);
+      emit_instr(SX8_32);
       break;
     case TY_I32:
       break;
@@ -444,16 +332,16 @@ void gen_call(expr_t *expr)
     arg = arg->arg.next;
   }
   
-  add_instr(CALL);
-  instr_t *pos = add_instr(0);
+  emit_instr(CALL);
+  int pos = emit_instr(0);
   
   add_replace(func->name, pos);
 }
 
 void gen_const(expr_t *expr)
 {
-  add_instr(PUSH);
-  add_instr(expr->num);
+  emit_instr(PUSH);
+  emit_instr(expr->num);
 }
 
 void gen_addr(expr_t *expr)
@@ -463,9 +351,9 @@ void gen_addr(expr_t *expr)
     gen_expr(expr->addr.base);
     break;
   case ADDR_LOCAL:
-    add_instr(LBP);
+    emit_instr(LBP);
     gen_expr(expr->addr.base);
-    add_instr(ADD);
+    emit_instr(ADD);
     break;
   default:
     error("gen_addr", "unknown case");
@@ -477,7 +365,7 @@ void gen_addr(expr_t *expr)
 void gen_load(expr_t *expr)
 {
   gen_addr(expr);
-  add_instr(LDR);
+  emit_instr(LDR);
 }
 
 void gen_condition(expr_t *expr, hash_t end)
@@ -498,7 +386,7 @@ void gen_condition(expr_t *expr, hash_t end)
       
       gen_condition(expr->binop.lhs, next_cond);
       
-      gen_instr_label(JMP, yes_cond);
+      emit_instr_label(JMP, yes_cond);
       
       set_label(next_cond);
       gen_condition(expr->binop.rhs, end);
@@ -514,26 +402,26 @@ void gen_condition(expr_t *expr, hash_t end)
     case OPERATOR_GTR:
       gen_expr(expr->binop.lhs);
       gen_expr(expr->binop.rhs);
-      add_instr(CMP);
+      emit_instr(CMP);
       
       switch (expr->binop.op) {
       case OPERATOR_EQ:
-        gen_instr_label(JNE, end);
+        emit_instr_label(JNE, end);
         break;
       case OPERATOR_NE:
-        gen_instr_label(JE, end);
+        emit_instr_label(JE, end);
         break;
       case OPERATOR_LE:
-        gen_instr_label(JG, end);
+        emit_instr_label(JG, end);
         break;
       case OPERATOR_GE:
-        gen_instr_label(JL, end);
+        emit_instr_label(JL, end);
         break;
       case OPERATOR_LSS:
-        gen_instr_label(JGE, end);
+        emit_instr_label(JGE, end);
         break;
       case OPERATOR_GTR:
-        gen_instr_label(JLE, end);
+        emit_instr_label(JLE, end);
         break;
       }
       
@@ -545,105 +433,261 @@ void gen_condition(expr_t *expr, hash_t end)
   expr_cond:
   default:
     gen_expr(expr);
-    add_instr(PUSH);
-    add_instr(0);
-    add_instr(CMP);
-    gen_instr_label(JE, end);
+    emit_instr(PUSH);
+    emit_instr(0);
+    emit_instr(CMP);
+    emit_instr_label(JE, end);
     break;
   }
 }
 
 void gen_binop(expr_t *expr)
 {
-  if (expr->binop.op == OPERATOR_ASSIGN) {
-    gen_expr(expr->binop.rhs);
-    gen_addr(expr->binop.lhs);
-    
-    tspec_t tspec = simplify_type_spec(&expr->type);
-    switch (tspec) {
-    case TY_I8:
-      add_instr(STR8);
-      break;
-    case TY_I32:
-      add_instr(STR);
-      break;
-    default:
-      error("gen_binop", "assign: unknown operator");
-      break;
-    }
-  } else if (expr->binop.op == OPERATOR_OR || expr->binop.op == OPERATOR_AND) {
-    hash_t cond_end, body_end;
-    
-    cond_end = tmp_label();
-    body_end = tmp_label();
-    
-    gen_condition(expr, cond_end);
-    
-    add_instr(PUSH);
-    add_instr(1);
-    add_instr(JMP);
-    instr_t *pos = add_instr(0);
-    
-    add_replace(body_end, pos);
-    
-    set_label(cond_end);
-    
-    add_instr(PUSH);
-    add_instr(0);
-    
-    set_label(body_end);
-  } else {
-    gen_expr(expr->binop.lhs);
-    gen_expr(expr->binop.rhs);
-    
-    tspec_t tspec = simplify_type_spec(&expr->type);
-    switch (tspec) {
-    case TY_I32:
-      switch (expr->binop.op) {
-      case OPERATOR_ADD:
-        add_instr(ADD);
-        break;
-      case OPERATOR_SUB:
-        add_instr(SUB);
-        break;
-      case OPERATOR_MUL:
-        add_instr(MUL);
-        break;
-      case OPERATOR_DIV:
-        add_instr(DIV);
-        break;
-      case OPERATOR_EQ:
-        add_instr(CMP);
-        add_instr(SETE);
-        break;
-      case OPERATOR_NE:
-        add_instr(CMP);
-        add_instr(SETNE);
-        break;
-      case OPERATOR_LSS:
-        add_instr(CMP);
-        add_instr(SETL);
-        break;
-      case OPERATOR_GTR:
-        add_instr(CMP);
-        add_instr(SETG);
-        break;
-      case OPERATOR_LE:
-        add_instr(CMP);
-        add_instr(SETLE);
-        break;
-      case OPERATOR_GE:
-        add_instr(CMP);
-        add_instr(SETGE);
-        break;
-      default:
-        error("gen_binop", "unknown case: op: '%i'", expr->binop.op);
-        break;
-      }
-      break;
-    default:
-      error("gen_binop", "unknown case: spec: '%i'", tspec);
-      break;
-    }
+  switch (expr->binop.op) {
+  case OPERATOR_ASSIGN:
+    gen_binop_assign(expr);
+    break;
+  case OPERATOR_OR:
+  case OPERATOR_AND:
+    gen_binop_cond(expr);
+    break;
+  default:
+    gen_binop_math(expr);
+    break;
   }
 }
+
+void gen_binop_assign(expr_t *expr)
+{
+  gen_expr(expr->binop.rhs);
+  gen_addr(expr->binop.lhs);
+  
+  tspec_t tspec = simplify_type_spec(&expr->type);
+  switch (tspec) {
+  case TY_I8:
+    emit_instr(STR8);
+    break;
+  case TY_I32:
+    emit_instr(STR);
+    break;
+  default:
+    error("gen_binop", "assign: unknown operator");
+    break;
+  }
+}
+
+void gen_binop_cond(expr_t *expr)
+{
+  hash_t cond_end = tmp_label();
+  hash_t body_end = tmp_label();
+  
+  gen_condition(expr, cond_end);
+  
+  emit_instr(PUSH);
+  emit_instr(1);
+  emit_instr(JMP);
+  int pos = emit_instr(0);
+  
+  add_replace(body_end, pos);
+  
+  set_label(cond_end);
+  
+  emit_instr(PUSH);
+  emit_instr(0);
+  
+  set_label(body_end);
+}
+
+void gen_binop_math(expr_t *expr)
+{
+
+  gen_expr(expr->binop.lhs);
+  gen_expr(expr->binop.rhs);
+  
+  tspec_t tspec = simplify_type_spec(&expr->type);
+  switch (tspec) {
+  case TY_I32:
+    switch (expr->binop.op) {
+    case OPERATOR_ADD:
+      emit_instr(ADD);
+      break;
+    case OPERATOR_SUB:
+      emit_instr(SUB);
+      break;
+    case OPERATOR_MUL:
+      emit_instr(MUL);
+      break;
+    case OPERATOR_DIV:
+      emit_instr(DIV);
+      break;
+    case OPERATOR_EQ:
+      emit_instr(CMP);
+      emit_instr(SETE);
+      break;
+    case OPERATOR_NE:
+      emit_instr(CMP);
+      emit_instr(SETNE);
+      break;
+    case OPERATOR_LSS:
+      emit_instr(CMP);
+      emit_instr(SETL);
+      break;
+    case OPERATOR_GTR:
+      emit_instr(CMP);
+      emit_instr(SETG);
+      break;
+    case OPERATOR_LE:
+      emit_instr(CMP);
+      emit_instr(SETLE);
+      break;
+    case OPERATOR_GE:
+      emit_instr(CMP);
+      emit_instr(SETGE);
+      break;
+    default:
+      error("gen_binop", "unknown case: op: '%i'", expr->binop.op);
+      break;
+    }
+    break;
+  default:
+    error("gen_binop", "unknown case: spec: '%i'", tspec);
+    break;
+  }
+}
+
+label_t *make_label(hash_t name, int pos)
+{
+  label_t *label = malloc(sizeof(label_t));
+  label->name = name;
+  label->pos = pos;
+  label->next = NULL;
+  return label;
+}
+
+replace_t *make_replace(int pos)
+{
+  replace_t *replace = malloc(sizeof(replace_t));
+  replace->pos = pos;
+  replace->next = NULL;
+  return replace;
+}
+
+hash_t tmp_label()
+{
+  char name[32];
+  
+  sprintf(name, ":_%lu", num_lbl++);
+  
+  return hash_value(name);
+}
+
+void set_label(hash_t name)
+{
+  if (label_list) {
+    label_t *head = label_list;
+    while (head->next) {
+      if (name == head->name)
+        error("duplicate label '%s'", hash_get(name));
+      
+      head = head->next;
+    }
+    
+    if (name == head->name)
+      error("duplicate label '%s'", hash_get(name));
+    
+    head->next = make_label(name, num_instr);
+  } else {
+    label_list = make_label(name, num_instr);
+  }
+}
+
+void add_replace(hash_t name, int pos)
+{
+  replace_t *replace = map_get(map_replace, name);
+  
+  if (replace) {
+    replace_t *head = replace;
+    
+    while (head->next)
+      head = head->next;
+    
+    head->next = make_replace(pos);
+  } else {
+    map_put(map_replace, name, make_replace(pos));
+  }
+}
+
+void replace_all()
+{
+  label_t *label = label_list;
+  while (label) {
+    replace_t *replace = map_get(map_replace, label->name);
+    
+    while (replace) {
+      instr_buf[replace->pos] = label->pos;
+      
+      replace = replace->next;
+    }
+    
+    label  = label->next;
+  }
+}
+
+tspec_t simplify_type_spec(type_t *type)
+{
+  if (type->dcltr) {
+    switch (type->dcltr->type) {
+    case DCLTR_POINTER:
+      return TY_I32;
+    }
+  }
+  
+  return type->spec->tspec;
+}
+
+int sub_str_match_lhs(char *lhs, char *rhs)
+{
+  char *c = lhs;
+  
+  int i = 0;
+  while (*c) {
+    if (*c++ != rhs[i++])
+      return 0;
+  }
+  
+  return 1;
+}
+
+int emit_instr(instr_t instr)
+{
+  if (num_instr >= max_instr) {
+    max_instr += 1024;
+    instr_buf = realloc(instr_buf, max_instr);
+  }
+  
+  int cache_pos = num_instr;
+  instr_buf[num_instr++] = instr;
+  
+  return cache_pos;
+}
+
+void emit_frame_enter(int size)
+{
+  emit_instr(ENTER);
+  emit_instr((size + 3) & (~3));
+}
+
+void emit_frame_leave()
+{
+  emit_instr(LEAVE);
+  emit_instr(RET);
+}
+
+void emit_instr_label(instr_t instr, hash_t lbl)
+{
+  emit_instr(instr);
+  int pos = emit_instr(0);
+  
+  add_replace(lbl, pos);
+}
+
