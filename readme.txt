@@ -3,6 +3,8 @@ cirno_c
   A basic toy interpreter
 
   usage: 9c [-dD] file
+    -d: debug
+    -D: dump binary
 
 note
 -------
