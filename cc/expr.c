@@ -27,7 +27,7 @@ opset_t opset_dict[] = {
   { TK_EQ_OP, TK_NE_OP },
   { '<', '>', TK_LE_OP, TK_GE_OP },
   { '+', '-' },
-  { '*', '/' }
+  { '*', '/', '%' }
 };
 
 int num_opset_dict = sizeof(opset_dict) / sizeof(opset_t);
@@ -49,6 +49,9 @@ int read_assign_op(operator_t *op)
     break;
   case TK_DIV_ASSIGN:
     *op = OPERATOR_DIV;
+    break;
+  case TK_MOD_ASSIGN:
+    *op = OPERATOR_MOD;
     break;
   default:
     return 0;
@@ -74,6 +77,9 @@ int read_expr_op(operator_t *op, int level)
         break;
       case '/':
         *op = OPERATOR_DIV;
+        break;
+      case '%':
+        *op = OPERATOR_MOD;
         break;
       case TK_OR_OP:
         *op = OPERATOR_OR;
@@ -136,6 +142,25 @@ int is_struct(expr_t *expr)
   return expr->type.spec->tspec == TY_STRUCT;
 }
 
+int is_arg_match(expr_t *func, expr_t *args)
+{
+  expr_t *arg = args;
+  param_t *param = func->func.func->params;
+  
+  while (param) {
+    if (!arg || !param)
+      return 0;
+    
+    if (!is_type_match(&arg->arg.base->type, &param->type))
+      return 0;
+    
+    arg = arg->arg.next;
+    param = param->next;
+  }
+  
+  return 1;
+}
+
 expr_t *find_identifier()
 {
   hash_t name = lex.token_hash;
@@ -164,6 +189,10 @@ expr_t *primary()
   case TK_CONSTANT:
     expr = make_const(lex.token_num);
     match(TK_CONSTANT);
+    break;
+  case TK_STRING_LITERAL:
+    expr = make_string_literal(lex.token_hash);
+    match(TK_STRING_LITERAL);
     break;
   case TK_IDENTIFIER:
     expr = find_identifier();
@@ -215,6 +244,9 @@ expr_t *postfix()
       
       if (!is_func(expr))
         token_error("cannot call non-function");
+      
+      if (!is_arg_match(expr, post))
+        token_error("incorrect arguments");
       
       return make_call(expr, post);
     } else if (lex.token == '.') {
@@ -492,8 +524,10 @@ expr_t *make_binop(expr_t *lhs, operator_t op, expr_t *rhs)
       return make_const(lhs->num * rhs->num);
     case OPERATOR_DIV:
       return make_const(lhs->num / rhs->num);
+    case OPERATOR_MOD:
+      return make_const(lhs->num % rhs->num);
     default:
-      token_error("unknown operator");
+      error("make_binop", "unknown operator");
       break;
     }
   }
@@ -508,3 +542,12 @@ expr_t *make_binop(expr_t *lhs, operator_t op, expr_t *rhs)
   return expr;
 }
 
+expr_t *make_string_literal(hash_t str_hash)
+{
+  expr_t *expr = make_expr();
+  expr->texpr = EXPR_STR;
+  expr->str_hash = str_hash;
+  expr->type.spec = ty_i8;
+  expr->type.dcltr = make_dcltr_pointer(NULL);
+  return expr;
+}

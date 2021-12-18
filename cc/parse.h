@@ -38,7 +38,6 @@ enum tdcltr_e {
   DCLTR_POINTER
 };
 
-
 enum operator_e {
   OPERATOR_ADD,
   OPERATOR_SUB,
@@ -52,11 +51,13 @@ enum operator_e {
   OPERATOR_LSS,
   OPERATOR_GTR,
   OPERATOR_LE,
-  OPERATOR_GE
+  OPERATOR_GE,
+  OPERATOR_MOD
 };
 
 enum texpr_e {
   EXPR_NONE,
+  EXPR_STR,
   EXPR_CONST,
   EXPR_ADDR,
   EXPR_LOAD,
@@ -130,6 +131,7 @@ struct scope_s {
 struct expr_s {
   union {
     int num;
+    hash_t str_hash;
     struct {
       expr_t *base;
       taddr_t taddr;

@@ -7,7 +7,7 @@ typedef struct lump_s lump_t;
 typedef struct header_s header_t;
 
 enum tlump_e {
-  LUMP_SYM,
+  LUMP_DATA,
   LUMP_INSTR,
   MAX_LUMP
 };
@@ -18,6 +18,7 @@ struct lump_s {
 };
 
 struct header_s {
+  int bss_size;
   lump_t lumps[MAX_LUMP];
 };
 
@@ -27,7 +28,9 @@ char *instr_tbl[] = {
   "sub",
   "mul",
   "div",
+  "mod",
   "ldr",
+  "ldr8",
   "str",
   "str8",
   "lbp",
@@ -56,11 +59,14 @@ char *instr_tbl[] = {
 
 int num_instr_tbl = sizeof(instr_tbl) / sizeof(char *);
 
-bin_t *make_bin(instr_t *instr, int num_instr)
+bin_t *make_bin(instr_t *instr, int num_instr, void *data, int data_size, int bss_size)
 {
   bin_t *bin = malloc(sizeof(bin_t));
   bin->instr = instr;
   bin->num_instr = num_instr;
+  bin->data = data;
+  bin->data_size = data_size;
+  bin->bss_size = bss_size;
   return bin;
 }
 
@@ -103,6 +109,9 @@ void bin_write(bin_t *bin, FILE *out)
   fseek(out, sizeof(header_t), SEEK_SET);
   
   header_t header;
+  header.bss_size = bin->bss_size;
+  
+  write_lump(out, &header, bin->data, bin->data_size, LUMP_DATA);
   write_lump(out, &header, bin->instr, bin->num_instr * sizeof(instr_t), LUMP_INSTR);
   
   fseek(out, 0, SEEK_SET);
@@ -125,9 +134,13 @@ bin_t *bin_read(FILE *in)
   header_t header;
   fread(&header, 1, sizeof(header_t), in);
   
-  instr_t *instr;
-  int size_instr;
-  instr = copy_lump(in, &header, &size_instr, LUMP_INSTR);
+  int data_size;
+  void *data = copy_lump(in, &header, &data_size, LUMP_DATA);
   
-  return make_bin(instr, size_instr / sizeof(instr_t));
+  int instr_size;
+  instr_t *instr_buf  = copy_lump(in, &header, &instr_size, LUMP_INSTR);
+  
+  int num_instr = instr_size / sizeof(instr_t);
+  
+  return make_bin(instr_buf, num_instr, data, data_size, header.bss_size);
 }

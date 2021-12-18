@@ -45,7 +45,8 @@ const char *token_str[] = {
   "<=",
   ">=",
   "==",
-  "!=",       
+  "!=",
+  "...",
   "fn",
   "i8",
   "i32",
@@ -58,6 +59,7 @@ const char *token_str[] = {
 };
 
 op_t op_dict[] = {
+  { "...",  TK_ELLIPSIS         },
   { ">>=",  TK_RIGHT_ASSIGN     }, 
   { "<<=",  TK_LEFT_ASSIGN      },
   { "+=",   TK_ADD_ASSIGN       },
@@ -116,7 +118,9 @@ keyword_t keyword_dict[] = {
   { "break",    TK_BREAK        },
   { "else",     TK_ELSE         },
   { "struct",   TK_STRUCT       },
-  { "asm",      TK_ASM          }
+  { "asm",      TK_ASM          },
+  { "argc",     TK_ARGC         },
+  { "argv",     TK_ARGV         }
 };
 
 const int op_dict_count = sizeof(op_dict) / sizeof(op_t);
@@ -139,7 +143,7 @@ void token_fprint_current(FILE *out)
     fprintf(out, "%i", lex.token_num);
     break;
   case TK_STRING_LITERAL:
-    fprintf(out, "%s", lex.str_ptr);
+    fprintf(out, "%s", hash_get(lex.token_hash));
     break;
   case TK_IDENTIFIER:
     fprintf(out, "%s", hash_get(lex.token_hash));
@@ -181,7 +185,7 @@ void token_fprintf(FILE *out, const char *fmt, va_list args)
 
 void token_warning(const char *fmt, ...)
 {
-  printf("%s:%i:warning: ", lex.filename, lex.line_no);
+  printf("%s:%i:warning: ", lex.fid->fname, lex.fid->line_no);
   
   va_list args;
   va_start(args, fmt);
@@ -193,7 +197,7 @@ void token_warning(const char *fmt, ...)
 
 void token_error(const char *fmt, ...)
 {
-  fprintf(stderr, "%s:%i:error: ", lex.filename, lex.line_no);
+  fprintf(stderr, "%s:%i:error: ", lex.fid->fname, lex.fid->line_no);
   
   va_list args;
   va_start(args, fmt);
@@ -206,31 +210,23 @@ void token_error(const char *fmt, ...)
 
 void populate_buffer()
 {
-  int bytes_old = lex.c - lex.tmp_buf;
+  int bytes_old = lex.fid->c - lex.fid->tmp_buf;
   int available = MAX_TMP - bytes_old;
   
   if (available < MIN_AVAILABLE) {
     if (available)
-      memmove(lex.tmp_buf, lex.c, available * sizeof(int));
+      memmove(lex.fid->tmp_buf, lex.fid->c, available);
     
     for (int i = 0; i < bytes_old; i++)
-      lex.tmp_buf[available + i] = fgetc(lex.file);
+      lex.fid->tmp_buf[available + i] = fgetc(lex.fid->file);
     
-    lex.c = lex.tmp_buf;
+    lex.fid->c = lex.fid->tmp_buf;
   }
-}
-
-void lex_putc(char c)
-{
-  *lex.str_ptr++ = c;
-  
-  if (lex.str_ptr - lex.str_buf >= MAX_STR)
-    error("lex_putc", "ran out of memory");
 }
 
 int read_char()
 {
-  int c = *lex.c++;
+  int c = *lex.fid->c++;
   populate_buffer();
   
   return c;
@@ -238,7 +234,10 @@ int read_char()
 
 int count(int n)
 {
-  lex.c += n;
+  if (*lex.fid->c == '\n')
+    lex.fid->line_no++;
+  
+  lex.fid->c += n;
   populate_buffer();
 }
 
@@ -270,13 +269,13 @@ int is_letter(int c)
 
 int read_escape_sequence()
 {
-  if (*lex.c != '\\')
+  if (*lex.fid->c != '\\')
     token_error("expected '\\'");
   
   count(1);
   
   int num = 0;
-  switch (*lex.c) {
+  switch (*lex.fid->c) {
   case 'a':
     num = '\a';
     count(1);
@@ -322,12 +321,12 @@ int read_escape_sequence()
     count(1);
     break;
   default:
-    if (is_digit(*lex.c)) {
-      num = *lex.c;
+    if (is_digit(*lex.fid->c)) {
+      num = *lex.fid->c;
       count(1);
       for (int i = 0; i < 2; i++) {
-        if (is_digit(*lex.c))
-          num = num * 10 + *lex.c;
+        if (is_digit(*lex.fid->c))
+          num = num * 10 + *lex.fid->c;
         else
           break;
         count(1);
@@ -342,20 +341,20 @@ int read_escape_sequence()
 
 int read_constant()
 {
-  if (*lex.c == '\'') {
+  if (*lex.fid->c == '\'') {
     count(1);
     
-    if (*lex.c == '\'')
+    if (*lex.fid->c == '\'')
       token_error("empty character constant");
     
-    if (*lex.c == '\\') {
+    if (*lex.fid->c == '\\') {
       lex.token_num = read_escape_sequence();
     } else {
-      lex.token_num = *lex.c;
+      lex.token_num = *lex.fid->c;
       count(1);
     }
     
-    if (*lex.c != '\'')
+    if (*lex.fid->c != '\'')
       token_error("multi-character chararacter constant");
     
     count(1);
@@ -363,10 +362,10 @@ int read_constant()
     lex.token = TK_CONSTANT;
     
     return 1;
-  } else if (is_digit(*lex.c)) {
+  } else if (is_digit(*lex.fid->c)) {
     lex.token_num = to_digit(read_char());
     
-    while (is_digit(*lex.c))
+    while (is_digit(*lex.fid->c))
       lex.token_num = lex.token_num * 10 + to_digit(read_char());
     
     lex.token = TK_CONSTANT;
@@ -392,12 +391,12 @@ int read_word()
   static char word[MAX_WORD];
   char *letter = &word[0];
   
-  if (is_letter(*lex.c) || *lex.c == '_') {
+  if (is_letter(*lex.fid->c) || *lex.fid->c == '_') {
     *letter++ = read_char();
     
-    while (is_letter(*lex.c)
-    || is_digit(*lex.c)
-    || *lex.c == '_') {
+    while (is_letter(*lex.fid->c)
+    || is_digit(*lex.fid->c)
+    || *lex.fid->c == '_') {
       if (letter + 1 >= &word[MAX_WORD])
         error("read_word", "word exceeded length MAX_WORD: '%i'.", MAX_WORD);
       
@@ -427,7 +426,7 @@ int read_word()
 int op_match(op_t *op)
 {
   for (int i = 0; i < strlen(op->key); i++) {
-    if (lex.c[i] != op->key[i])
+    if (lex.fid->c[i] != op->key[i])
       return 0;
   }
   
@@ -450,44 +449,52 @@ int read_op()
 
 int read_string_literal()
 {
-  if (*lex.c != '"')
+  if (*lex.fid->c != '"')
     return 0;
   
   count(1);
   
-  lex.token_str = lex.str_ptr;
-  while (*lex.c != '"') {
-    if (*lex.c == '\n')
-      ++lex.line_no;
+  int str_size = 32;
+  
+  char *str_buf = malloc(str_size);
+  int str_pos = 0;
+  while (*lex.fid->c != '"') {
+    if (str_pos + 2 >= str_size) {
+      str_size += 32;
+      str_buf = realloc(str_buf, str_size);
+    }
     
-    if (*lex.c == '\\') {
-      lex_putc(read_escape_sequence());
+    if (*lex.fid->c == '\\') {
+      str_buf[str_pos++] = read_escape_sequence();
     } else {
-      lex_putc(*lex.c);
+      str_buf[str_pos++] = *lex.fid->c;
       count(1);
     }
   }
   
-  lex_putc('\0');
+  str_buf[str_pos] = '\0';
   
   count(1);
   
+  lex.token_hash = hash_value(str_buf);
   lex.token = TK_STRING_LITERAL;
+  
+  free(str_buf);
   
   return 1;
 }
 
 int read_comment()
 {
-  if (lex.c[0] == '/' && lex.c[1] == '/') {
+  if (lex.fid->c[0] == '/' && lex.fid->c[1] == '/') {
     count(2);
-    while (*lex.c != '\n') {
+    while (*lex.fid->c != '\n') {
       count(1);
     }
     count(1);
-  } else if (lex.c[0] == '/' && lex.c[1] == '*') {
+  } else if (lex.fid->c[0] == '/' && lex.fid->c[1] == '*') {
     count(2);
-    while (lex.c[0] != '*' && lex.c[1] != '/')
+    while (lex.fid->c[0] != '*' && lex.fid->c[1] != '/')
       count(1);
     count(2);
   } else {
@@ -502,20 +509,106 @@ void reset_token()
   lex.token = 0;
   lex.token_num = 0;
   lex.token_hash = 0;
-  lex.token_str = NULL;
+}
+
+int sub_str_match(char *target, char *match)
+{
+  int len = strlen(match);
+  
+  int i = 0;
+  while (*match && i < len) {
+    if (target[i] != match[i])
+      return 0;
+    i++;
+  }
+  
+  return 1;
+}
+
+char *filename()
+{
+  if (*lex.fid->c != '"')
+    return NULL;
+  
+  count(1);
+  
+  int fname_size = 32;
+  char *buf = malloc(fname_size);
+  int pos = 0;
+  
+  while (*lex.fid->c != '"') {
+    buf[pos++] = *lex.fid->c;
+    count(1);
+    
+    if (pos + 1 >= fname_size) {
+      fname_size += 32;
+      buf = realloc(buf, fname_size);
+    }
+  }
+  
+  buf[pos++] = '\0';
+  
+  count(1);
+  
+  char *slash = strrchr(lex.fid->fname, '/');
+  
+  if (slash) {
+    char *dir = strndup(lex.fid->fname, slash - lex.fid->fname);
+    int len = strlen(dir);
+    
+    dir = realloc(dir, strlen(dir) + pos + 1);
+    dir[len] = '/';
+    strcat(dir + 1, buf);
+    
+    free(buf);
+    
+    buf = dir;
+  }
+  
+  return buf;
+}
+
+void preprocess()
+{
+  if (sub_str_match(lex.fid->c, "#include ")) {
+    count(strlen("#include "));
+    
+    char *fname = filename();
+    if (!fname)
+      token_error("#include expects \"FILENAME\"");
+    
+    FILE *in = fopen(fname, "rb");
+    if (!in)
+      token_error("could not open '%s'", fname);
+    
+    lexify(in, fname);
+  }
+}
+
+void unlexify()
+{
+  fclose(lex.fid->file);
+  free(lex.fid->fname);
+  --lex.fid;
+  lex.token = 0;
+  next();
 }
 
 void next()
 {
   reset_token();
   
+  int prev_line_no = lex.fid->line_no;
+  
   while (1) {
-    switch (*lex.c) {
+    switch (*lex.fid->c) {
     case EOF:
-      lex.token = EOF;
+      if (lex.fid > lex.fstack + 1)
+        unlexify();
+      else
+        lex.token = EOF;
       return;
     case '\n':
-      ++lex.line_no;
     case ' ':
     case '\t':
       count(1);
@@ -523,6 +616,11 @@ void next()
     case '"':
       read_string_literal();
       return;
+    case '#':
+      if (lex.fid->line_no != prev_line_no || lex.token == 0) {
+        preprocess();
+        return;
+      }
     default:
       if (!read_comment()) {
         if (read_constant()
@@ -530,7 +628,7 @@ void next()
         || read_op())
           return;
         
-        token_error("unknown character: '%c (%i)', ignoring.", *lex.c, *lex.c);
+        token_error("unknown character: '%c (%i)', ignoring.", *lex.fid->c, *lex.fid->c);
         read_char();
         
         return;
@@ -540,17 +638,21 @@ void next()
   }
 }
 
-void lexify(FILE *file, const char *filename)
+void lex_init()
 {
-  lex.file = file;
-  lex.filename = filename;
+  lex.fid = lex.fstack;
+}
+
+void lexify(FILE *file, char *fname)
+{
+  ++lex.fid;
+  lex.fid->file = file;
+  lex.fid->fname = fname;
+  lex.fid->line_no = 1;
   
-  lex.c = &lex.tmp_buf[MAX_TMP - 1];
-  lex.str_ptr = lex.str_buf;
-  
-  lex.line_no = 1;
+  lex.token = 0;
+  lex.fid->c = &lex.fid->tmp_buf[MAX_TMP - 1];
   
   count(1);
   next();
 }
-

@@ -1,12 +1,4 @@
-
-fn print(i32 n)
-{
-  asm("
-    lbp
-    ldr
-    int 0
-  ");
-}
+#include "stdio.9c"
 
 fn main()
 {

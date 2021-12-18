@@ -1,18 +1,10 @@
+#include "stdio.9c"
 
 struct vec3_t {
   i32 x;
   i32 y;
   i32 z;
 };
-
-fn print(i32 n)
-{
-  asm("
-    lbp
-    ldr
-    int 0
-  ");
-}
 
 fn dot(vec3_t *a, vec3_t *b) : i32
 {

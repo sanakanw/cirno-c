@@ -37,12 +37,6 @@ void decl_init()
   current_func = NULL;
 }
 
-dcltr_t *make_dcltr()
-{
-  return malloc(sizeof(dcltr_t));
-}
-
-
 int is_type_match(type_t *lhs, type_t *rhs)
 {
   if (!rhs
@@ -211,7 +205,7 @@ param_t *param_declaration()
   
   hash_t name;
   dcltr_t *dcltr = direct_declarator(&name);
-  decl_t *decl = insert_decl(scope_local, spec, dcltr, NULL, name);
+  decl_t *decl = insert_decl(scope_local, spec, dcltr, NULL, name, 1);
   expr_t *addr = make_addr(make_const(decl->offset), ADDR_LOCAL, &decl->type);
   
   return make_param(spec, dcltr, addr);
@@ -253,7 +247,7 @@ decl_t *struct_member_declaration(scope_t *scope)
   while (1) {
     dcltr_t *dcltr = direct_declarator(&name);
     
-    decl = insert_decl(scope, spec, dcltr, NULL, name);
+    decl = insert_decl(scope, spec, dcltr, NULL, name, 0);
     if (body)
       head = head->next = decl;
     else
@@ -288,7 +282,7 @@ decl_t *declaration(scope_t *scope)
       init = expression();
     }
     
-    decl = insert_decl(scope, spec, dcltr, init, name);
+    decl = insert_decl(scope, spec, dcltr, init, name, 0);
     if (body)
       head = head->next = decl;
     else
@@ -305,12 +299,17 @@ decl_t *declaration(scope_t *scope)
   return body;
 }
 
-decl_t *insert_decl(scope_t *scope, spec_t *spec, dcltr_t *dcltr, expr_t *init, hash_t name)
+decl_t *insert_decl(scope_t *scope, spec_t *spec, dcltr_t *dcltr, expr_t *init, hash_t name, int align_32)
 {
-  int align = type_align(spec, dcltr) - 1;
+  int align;
+  if (align_32)
+    align = 3;
+  else
+     align = type_align(spec, dcltr) - 1;
+  
+  scope->size = (scope->size + align) & ~align;
   
   decl_t *decl = make_decl(spec, dcltr, init, scope->size);
-  scope->size = (scope->size + align) & ~align;
   scope->size += type_size(spec, dcltr);
   map_put(scope->map, name, decl);
   
@@ -513,4 +512,9 @@ func_t *make_func(hash_t name, type_t *type, param_t *params, stmt_t *body, int 
   func->local_size = local_size;
   func->next = NULL;
   return func;
+}
+
+dcltr_t *make_dcltr()
+{
+  return malloc(sizeof(dcltr_t));
 }

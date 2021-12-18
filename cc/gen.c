@@ -3,12 +3,20 @@
 #include "../common/hash.h"
 #include "../common/map.h"
 #include "../common/error.h"
+#include "../vm/vm.h"
 #include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
 
+typedef struct data_s data_t;
 typedef struct label_s label_t;
 typedef struct replace_s replace_t;
+
+struct data_s {
+  int pos;
+  hash_t str_hash;
+  data_t *next;
+};
 
 struct label_s {
   hash_t name;
@@ -21,21 +29,27 @@ struct replace_s {
   replace_t *next;
 };
 
-static instr_t *instr_buf = NULL;
-static int num_instr = 0, max_instr = 1024;
-static int num_lbl = 0;
+static map_t map_data;
+static data_t *data_list, *data_head;
+static int data_size;
+static int bss_size;
 
-static int func_active = 0;
+static instr_t *instr_buf;
+static int num_instr, max_instr;
+static int num_lbl;
+
+static int func_active;
 static hash_t ret_lbl;
 
 static map_t map_replace;
 static label_t *label_list;
 
-int emit_instr(instr_t instr);
+int emit(instr_t instr);
 void emit_jmp_hash(hash_t lbl);
-void emit_instr_label(instr_t instr, hash_t lbl);
+void emit_label(instr_t instr, hash_t lbl);
 void emit_frame_enter(int size);
 void emit_frame_leave();
+data_t *emit_data_str(hash_t str_hash);
 
 void gen_func(func_t *func);
 void gen_param(param_t *param);
@@ -53,6 +67,7 @@ void gen_addr(expr_t *expr);
 void gen_call(expr_t *expr);
 void gen_load(expr_t *expr);
 void gen_cast(expr_t *expr);
+void gen_str(expr_t *expr);
 
 void gen_binop(expr_t *expr);
 void gen_binop_assign(expr_t *expr);
@@ -65,34 +80,38 @@ label_t *make_label(hash_t name, int pos);
 replace_t *make_replace(int pos);
 hash_t tmp_label();
 void set_label(hash_t name);
-void add_replace(hash_t name, int pos);
+void set_replace(hash_t name, int pos);
 void replace_all();
 tspec_t simplify_type_spec(type_t *type);
 int sub_str_match_lhs(char *lhs, char *rhs);
+void *collapse_data(int *data_len);
 
 bin_t *gen(unit_t *unit)
 {
   max_instr = 1024;
   num_lbl = 0;
   num_instr = 0;
+  bss_size = unit->global_size;
   
   instr_buf = malloc(max_instr * sizeof(instr_t));
+  data_list = NULL;
+  data_head = NULL;
   
   map_replace = make_map();
-  
-  emit_instr(ENTER);
-  emit_instr((unit->global_size + 3) & (~3));
+  map_data = make_map();
   
   gen_stmt(unit->stmt);
-  
-  emit_instr(LEAVE);
-  emit_instr(RET);
+  emit(INT);
+  emit(SYS_EXIT);
   
   gen_func(unit->func);
   
   replace_all();
   
-  return make_bin(instr_buf, num_instr);
+  int data_size;
+  void *data = collapse_data(&data_size);
+  
+  return make_bin(instr_buf, num_instr, data, data_size, (bss_size + 3) & (~3));
 }
 
 void gen_func(func_t *func)
@@ -127,7 +146,7 @@ void gen_param(param_t *param)
     gen_param(param->next);
   
   gen_addr(param->addr);
-  emit_instr(STR);
+  emit(STR);
 }
 
 void gen_stmt(stmt_t *stmt)
@@ -183,13 +202,13 @@ void gen_asm(stmt_t *stmt)
           c++;
         }
         
-        emit_instr(sum);
+        emit(sum);
       } else {
         int match_keyword = 0;
         for (int i = 0; i < num_instr_tbl; i++) {
           if (sub_str_match_lhs(instr_tbl[i], c)) {
             match_keyword = 1;
-            emit_instr(i);
+            emit(i);
             c += strlen(instr_tbl[i]);
             break;
           }
@@ -210,7 +229,7 @@ void gen_ret(stmt_t *stmt)
   
   gen_expr(stmt->ret_stmt.value);
   
-  emit_instr_label(JMP, ret_lbl);
+  emit_label(JMP, ret_lbl);
 }
 
 void gen_if(stmt_t *stmt)
@@ -225,7 +244,7 @@ void gen_if(stmt_t *stmt)
     
     gen_condition(stmt->if_stmt.cond, cond_end_lbl);
     gen_stmt(stmt->if_stmt.body);
-    emit_instr_label(JMP, end_lbl);
+    emit_label(JMP, end_lbl);
     
     set_label(cond_end_lbl);
     
@@ -247,7 +266,7 @@ void gen_while(stmt_t *stmt)
   gen_condition(stmt->while_stmt.cond, end_lbl);
   gen_stmt(stmt->while_stmt.body);
   
-  emit_instr_label(JMP, cond_lbl);
+  emit_label(JMP, cond_lbl);
   set_label(end_lbl);
 }
 
@@ -276,6 +295,9 @@ void gen_expr(expr_t *expr)
     case EXPR_CAST:
       gen_cast(expr);
       break;
+    case EXPR_STR:
+      gen_str(expr);
+      break;
     default:
       error("gen_expr", "unknown case");
       break;
@@ -285,14 +307,25 @@ void gen_expr(expr_t *expr)
   }
 }
 
+void gen_str(expr_t *expr)
+{
+  data_t *data = map_get(map_data, expr->str_hash);
+  
+  if (!data) {
+    data = emit_data_str(expr->str_hash);
+    map_put(map_data, expr->str_hash, data);
+  }
+  
+  emit(PUSH);
+  emit(data->pos);
+}
+
 void gen_cast(expr_t *expr)
 {
-  tspec_t type_a, type_b;
-  
   gen_expr(expr->unary.base);
   
-  type_a = simplify_type_spec(&expr->type);
-  type_b = simplify_type_spec(&expr->unary.base->type);
+  tspec_t type_a = simplify_type_spec(&expr->type);
+  tspec_t type_b = simplify_type_spec(&expr->unary.base->type);
   
   switch (type_a) {
   case TY_I8:
@@ -300,7 +333,7 @@ void gen_cast(expr_t *expr)
     case TY_I8:
       break;
     case TY_I32:
-      emit_instr(SX32_8);
+      emit(SX32_8);
       break;
     case TY_STRUCT:
       break;
@@ -309,7 +342,7 @@ void gen_cast(expr_t *expr)
   case TY_I32:
     switch (type_b) {
     case TY_I8:
-      emit_instr(SX8_32);
+      emit(SX8_32);
       break;
     case TY_I32:
       break;
@@ -332,16 +365,16 @@ void gen_call(expr_t *expr)
     arg = arg->arg.next;
   }
   
-  emit_instr(CALL);
-  int pos = emit_instr(0);
+  emit(CALL);
+  int pos = emit(0);
   
-  add_replace(func->name, pos);
+  set_replace(func->name, pos);
 }
 
 void gen_const(expr_t *expr)
 {
-  emit_instr(PUSH);
-  emit_instr(expr->num);
+  emit(PUSH);
+  emit(expr->num);
 }
 
 void gen_addr(expr_t *expr)
@@ -351,9 +384,9 @@ void gen_addr(expr_t *expr)
     gen_expr(expr->addr.base);
     break;
   case ADDR_LOCAL:
-    emit_instr(LBP);
+    emit(LBP);
     gen_expr(expr->addr.base);
-    emit_instr(ADD);
+    emit(ADD);
     break;
   default:
     error("gen_addr", "unknown case");
@@ -365,7 +398,18 @@ void gen_addr(expr_t *expr)
 void gen_load(expr_t *expr)
 {
   gen_addr(expr);
-  emit_instr(LDR);
+  tspec_t tspec = simplify_type_spec(&expr->type);
+  switch (tspec) {
+  case TY_I8:
+    emit(LDR8);
+    break;
+  case TY_I32:
+    emit(LDR);
+    break;
+  default:
+    error("gen_load", "assign: unknown operator");
+    break;
+  }
 }
 
 void gen_condition(expr_t *expr, hash_t end)
@@ -386,7 +430,7 @@ void gen_condition(expr_t *expr, hash_t end)
       
       gen_condition(expr->binop.lhs, next_cond);
       
-      emit_instr_label(JMP, yes_cond);
+      emit_label(JMP, yes_cond);
       
       set_label(next_cond);
       gen_condition(expr->binop.rhs, end);
@@ -402,26 +446,26 @@ void gen_condition(expr_t *expr, hash_t end)
     case OPERATOR_GTR:
       gen_expr(expr->binop.lhs);
       gen_expr(expr->binop.rhs);
-      emit_instr(CMP);
+      emit(CMP);
       
       switch (expr->binop.op) {
       case OPERATOR_EQ:
-        emit_instr_label(JNE, end);
+        emit_label(JNE, end);
         break;
       case OPERATOR_NE:
-        emit_instr_label(JE, end);
+        emit_label(JE, end);
         break;
       case OPERATOR_LE:
-        emit_instr_label(JG, end);
+        emit_label(JG, end);
         break;
       case OPERATOR_GE:
-        emit_instr_label(JL, end);
+        emit_label(JL, end);
         break;
       case OPERATOR_LSS:
-        emit_instr_label(JGE, end);
+        emit_label(JGE, end);
         break;
       case OPERATOR_GTR:
-        emit_instr_label(JLE, end);
+        emit_label(JLE, end);
         break;
       }
       
@@ -433,10 +477,10 @@ void gen_condition(expr_t *expr, hash_t end)
   expr_cond:
   default:
     gen_expr(expr);
-    emit_instr(PUSH);
-    emit_instr(0);
-    emit_instr(CMP);
-    emit_instr_label(JE, end);
+    emit(PUSH);
+    emit(0);
+    emit(CMP);
+    emit_label(JE, end);
     break;
   }
 }
@@ -465,10 +509,10 @@ void gen_binop_assign(expr_t *expr)
   tspec_t tspec = simplify_type_spec(&expr->type);
   switch (tspec) {
   case TY_I8:
-    emit_instr(STR8);
+    emit(STR8);
     break;
   case TY_I32:
-    emit_instr(STR);
+    emit(STR);
     break;
   default:
     error("gen_binop", "assign: unknown operator");
@@ -483,24 +527,23 @@ void gen_binop_cond(expr_t *expr)
   
   gen_condition(expr, cond_end);
   
-  emit_instr(PUSH);
-  emit_instr(1);
-  emit_instr(JMP);
-  int pos = emit_instr(0);
+  emit(PUSH);
+  emit(1);
+  emit(JMP);
+  int pos = emit(0);
   
-  add_replace(body_end, pos);
+  set_replace(body_end, pos);
   
   set_label(cond_end);
   
-  emit_instr(PUSH);
-  emit_instr(0);
+  emit(PUSH);
+  emit(0);
   
   set_label(body_end);
 }
 
 void gen_binop_math(expr_t *expr)
 {
-
   gen_expr(expr->binop.lhs);
   gen_expr(expr->binop.rhs);
   
@@ -509,40 +552,43 @@ void gen_binop_math(expr_t *expr)
   case TY_I32:
     switch (expr->binop.op) {
     case OPERATOR_ADD:
-      emit_instr(ADD);
+      emit(ADD);
       break;
     case OPERATOR_SUB:
-      emit_instr(SUB);
+      emit(SUB);
       break;
     case OPERATOR_MUL:
-      emit_instr(MUL);
+      emit(MUL);
       break;
     case OPERATOR_DIV:
-      emit_instr(DIV);
+      emit(DIV);
+      break;
+    case OPERATOR_MOD:
+      emit(MOD);
       break;
     case OPERATOR_EQ:
-      emit_instr(CMP);
-      emit_instr(SETE);
+      emit(CMP);
+      emit(SETE);
       break;
     case OPERATOR_NE:
-      emit_instr(CMP);
-      emit_instr(SETNE);
+      emit(CMP);
+      emit(SETNE);
       break;
     case OPERATOR_LSS:
-      emit_instr(CMP);
-      emit_instr(SETL);
+      emit(CMP);
+      emit(SETL);
       break;
     case OPERATOR_GTR:
-      emit_instr(CMP);
-      emit_instr(SETG);
+      emit(CMP);
+      emit(SETG);
       break;
     case OPERATOR_LE:
-      emit_instr(CMP);
-      emit_instr(SETLE);
+      emit(CMP);
+      emit(SETLE);
       break;
     case OPERATOR_GE:
-      emit_instr(CMP);
-      emit_instr(SETGE);
+      emit(CMP);
+      emit(SETGE);
       break;
     default:
       error("gen_binop", "unknown case: op: '%i'", expr->binop.op);
@@ -601,7 +647,7 @@ void set_label(hash_t name)
   }
 }
 
-void add_replace(hash_t name, int pos)
+void set_replace(hash_t name, int pos)
 {
   replace_t *replace = map_get(map_replace, name);
   
@@ -658,7 +704,35 @@ int sub_str_match_lhs(char *lhs, char *rhs)
   return 1;
 }
 
-int emit_instr(instr_t instr)
+void *collapse_data(int *data_size)
+{
+  data_t *data = data_list;
+  
+  *data_size = 0;
+  while (data) {
+    *data_size += strlen(hash_get(data->str_hash)) + 1;
+    data = data->next;
+  }
+  
+  void *buf = malloc(*data_size);
+  void *ptr = buf;
+  
+  data = data_list;
+  while (data) {
+    char *str = hash_get(data->str_hash);
+    int len = strlen(str) + 1;
+    memcpy(ptr, str, len);
+    ptr += len;
+    
+    data_t *next = data->next;
+    free(data);
+    data = next;
+  }
+  
+  return buf;
+}
+
+int emit(instr_t instr)
 {
   if (num_instr >= max_instr) {
     max_instr += 1024;
@@ -673,21 +747,37 @@ int emit_instr(instr_t instr)
 
 void emit_frame_enter(int size)
 {
-  emit_instr(ENTER);
-  emit_instr((size + 3) & (~3));
+  emit(ENTER);
+  emit((size + 3) & (~3));
 }
 
 void emit_frame_leave()
 {
-  emit_instr(LEAVE);
-  emit_instr(RET);
+  emit(LEAVE);
+  emit(RET);
 }
 
-void emit_instr_label(instr_t instr, hash_t lbl)
+void emit_label(instr_t instr, hash_t lbl)
 {
-  emit_instr(instr);
-  int pos = emit_instr(0);
+  emit(instr);
+  int pos = emit(0);
   
-  add_replace(lbl, pos);
+  set_replace(lbl, pos);
 }
 
+data_t *emit_data_str(hash_t str_hash)
+{
+  data_t *data = malloc(sizeof(data_t));
+  data->pos = data_size + bss_size;
+  data->str_hash = str_hash;
+  data->next = NULL;
+  
+  if (data_list)
+    data_head = data_head->next = data;
+  else
+    data_list = data_head = data;
+  
+  data_size += strlen(hash_get(str_hash)) + 1;
+  
+  return data;
+}

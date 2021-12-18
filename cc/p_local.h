@@ -5,6 +5,7 @@
 #include "parse.h"
 
 extern spec_t *ty_u0;
+extern spec_t *ty_i8;
 extern spec_t *ty_i32;
 
 extern map_t scope_func;
@@ -18,8 +19,9 @@ extern scope_t *current_scope;
 
 expr_t *make_const(int i32);
 expr_t *make_addr(expr_t *base, taddr_t taddr, type_t *type);
-dcltr_t *make_dcltr_pointer(dcltr_t *next);
 scope_t *make_scope(taddr_t taddr);
+dcltr_t *make_dcltr();
+dcltr_t *make_dcltr_pointer(dcltr_t *next);
 dcltr_t *make_dcltr_pointer(dcltr_t *next);
 dcltr_t *make_dcltr_array(int size, dcltr_t *next);
 decl_t *make_decl(spec_t *spec, dcltr_t *dcltr, expr_t *init, int offset);
@@ -40,6 +42,7 @@ expr_t *make_func_expr(func_t *func);
 expr_t *make_call(expr_t *func, expr_t *arg);
 expr_t *make_arg(expr_t *base);
 expr_t *make_binop(expr_t *lhs, operator_t op, expr_t *rhs);
+expr_t *make_string_literal(hash_t str_hash);
 
 int is_type_match(type_t *lhs, type_t *rhs);
 int type_size(spec_t *spec, dcltr_t *dcltr);
@@ -77,6 +80,6 @@ spec_t *specifiers();
 int type_name(type_t *type);
 param_t *param_type_list();
 param_t *param_declaration();
-decl_t *insert_decl(scope_t *scope, spec_t *spec, dcltr_t *dcltr, expr_t *init, hash_t name);
+decl_t *insert_decl(scope_t *scope, spec_t *spec, dcltr_t *dcltr, expr_t *init, hash_t name, int align_32);
 
 #endif

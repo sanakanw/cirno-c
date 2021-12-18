@@ -21,7 +21,7 @@ void hash_init()
   str_map = make_map();
 }
 
-void *str_alloc(const char *value)
+void *str_alloc(char *value)
 {
   int len = strlen(value);
   
@@ -39,11 +39,11 @@ void *str_alloc(const char *value)
   return ptr;
 }
 
-hash_t hash_value(const char *value)
+hash_t hash_value(char *value)
 {  
   hash_t hash = 5381;
   
-  const char *c = value;
+  char *c = value;
   while (*c)
     hash = ((hash << 5) + hash) + (unsigned char) *c++;
   
@@ -53,7 +53,7 @@ hash_t hash_value(const char *value)
   return hash;
 }
 
-const char *hash_get(hash_t hash)
+char *hash_get(hash_t hash)
 {
   return map_get(str_map, hash);
 }

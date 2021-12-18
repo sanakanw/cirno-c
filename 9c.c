@@ -41,7 +41,7 @@ int main(int argc, char **argv)
     exit(1);
   }
   
-  const char *fname = argv[optind];
+  char *fname = argv[optind];
   
   FILE *in = fopen(fname, "rb");
   if (!in) {
@@ -49,6 +49,7 @@ int main(int argc, char **argv)
     exit(1);
   }
   
+  lex_init();
   hash_init();
   decl_init();
   

@@ -30,10 +30,12 @@ stmt_t *inline_asm_statement()
   match(TK_ASM);
   
   match('(');
-  char *code = lex.token_str;
+  hash_t code_hash = lex.token_hash;
   match(TK_STRING_LITERAL);
   match(')');
   match(';');
+  
+  char *code = hash_get(code_hash);
   
   return make_inline_asm_stmt(code);
 }

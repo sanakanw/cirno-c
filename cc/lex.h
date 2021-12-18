@@ -4,11 +4,12 @@
 #include "../common/hash.h"
 #include <stdio.h>
 
-#define MAX_STR 1024
 #define MAX_TMP 32
-#define MIN_AVAILABLE 8
+#define MAX_FSTACK 32
+#define MIN_AVAILABLE 32
 
 typedef struct lex_s lex_t;
+typedef struct file_s file_t;
 typedef enum token_e token_t;
 
 enum token_e {
@@ -36,6 +37,7 @@ enum token_e {
   TK_GE_OP,
   TK_EQ_OP,
   TK_NE_OP,
+  TK_ELLIPSIS,
   TK_FN,
   TK_I8,
   TK_I32,
@@ -45,30 +47,32 @@ enum token_e {
   TK_BREAK,
   TK_ELSE,
   TK_STRUCT,
-  TK_ASM
+  TK_ASM,
+  TK_ARGC,
+  TK_ARGV
+};
+
+struct file_s {
+  FILE *file;
+  char *fname;
+  int line_no;
+  char tmp_buf[MAX_TMP];
+  char *c;
 };
 
 struct lex_s {
-  FILE *file;
-  const char *filename;
-  
-  int tmp_buf[MAX_TMP];
-  int *c;
-  
-  char str_buf[MAX_STR];
-  char *str_ptr;
-  
-  int line_no;
+  file_t fstack[MAX_FSTACK];
+  file_t *fid;
   
   token_t token;
   int     token_num;
   hash_t  token_hash;
-  char    *token_str;
 };
 
 extern lex_t lex;
 
-void lexify(FILE *file, const char *filename);
+void lex_init();
+void lexify(FILE *file, char *fname);
 void next();
 void match(token_t tok);
 void token_error(const char *fmt, ...);

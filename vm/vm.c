@@ -2,15 +2,10 @@
 
 #include "../common/error.h"
 #include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
 
 #define ALIGN_32(X) (X / 4)
-
-typedef enum int_code_e int_code_t;
-
-enum int_code_e {
-  INT_PRINT
-};
 
 vm_t *make_vm()
 {
@@ -20,6 +15,10 @@ vm_t *make_vm()
   vm->bp = MAX_MEM * sizeof(int);
   vm->cp = 0;
   vm->fp = 0;
+  vm->f_gtr = 0;
+  vm->f_lss = 0;
+  vm->f_equ = 0;
+  vm->f_exit = 0;
   vm->s_i32 = vm->stack;
   vm->m_i8 = (char*) vm->mem;
   vm->m_i32 = vm->mem;
@@ -68,6 +67,11 @@ static inline void vm_div(vm_t *vm)
 static inline void vm_ldr(vm_t *vm)
 {
   vm->s_i32[vm->sp - 1] = vm->m_i32[ALIGN_32(vm->s_i32[vm->sp - 1])];
+}
+
+static inline void vm_ldr8(vm_t *vm)
+{
+  vm->s_i32[vm->sp - 1] = vm->m_i8[vm->s_i32[vm->sp - 1]];
 }
 
 static inline void vm_str(vm_t *vm)
@@ -201,12 +205,40 @@ static inline void vm_sx32_8(vm_t *vm)
   vm->s_i32[vm->sp - 1] = ((vm->s_i32[vm->sp - 1] & 0x80000000) >> 24) | (vm->s_i32[vm->sp - 1] & 0x7f);
 }
 
+static inline void vm_mod(vm_t *vm)
+{
+  vm->s_i32[vm->sp - 2] %= vm->s_i32[vm->sp - 1];
+  --vm->sp;
+}
+
+static inline void vm_exit(vm_t *vm)
+{
+  vm->f_exit = 1;
+}
+
+static inline void vm_print(vm_t *vm)
+{
+  printf("%i\n", vm->s_i32[vm->sp - 1]);
+  vm->sp -= 1;
+}
+
+static inline void vm_write(vm_t *vm)
+{
+  fputs(&vm->m_i8[vm->s_i32[vm->sp - 1]], stdout);
+  vm->sp -= 1;
+}
+
 static inline void vm_int(vm_t *vm, int code)
 {
   switch (code) {
-  case INT_PRINT:
-    printf("%i\n", vm->s_i32[vm->sp - 1]);
-    vm->sp -= 1;
+  case SYS_EXIT:
+    vm_exit(vm);
+    break;
+  case SYS_PRINT:
+    vm_print(vm);
+    break;
+  case SYS_WRITE:
+    vm_write(vm);
     break;
   }
 }
@@ -215,15 +247,16 @@ void vm_load(vm_t *vm, bin_t *bin)
 {
   vm->bin = bin;
   vm->ip = 0;
+  vm->bp = MAX_MEM * sizeof(int);
+  vm->sp = 0;
+  vm->f_exit = 0;
+  
+  memcpy(vm->m_i8 + bin->bss_size, bin->data, bin->data_size);
 }
 
 void vm_exec(vm_t *vm)
 {
-  vm->ip = -1;
-  
-  vm_call(vm, 0);
-  
-  while (vm->ip != -1) {
+  while (!vm->f_exit) {
     switch (fetch(vm)) {
     case PUSH:
       vm_push(vm, fetch(vm));
@@ -243,8 +276,14 @@ void vm_exec(vm_t *vm)
     case DIV:
       vm_div(vm);
       break;
+    case MOD:
+      vm_mod(vm);
+      break;
     case LDR:
       vm_ldr(vm);
+      break;
+    case LDR8:
+      vm_ldr8(vm);
       break;
     case STR:
       vm_str(vm);
