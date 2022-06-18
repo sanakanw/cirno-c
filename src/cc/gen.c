@@ -91,7 +91,7 @@ bin_t *gen(unit_t *unit)
   max_instr = 1024;
   num_lbl = 0;
   num_instr = 0;
-  bss_size = unit->global_size;
+  bss_size = unit->scope.size;
   
   instr_buf = malloc(max_instr * sizeof(instr_t));
   data_list = NULL;

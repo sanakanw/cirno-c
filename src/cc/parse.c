@@ -2,12 +2,17 @@
 
 #include <stdlib.h>
 
-unit_t *make_unit(func_t *func, stmt_t *stmt, int global_size)
+void parse_init()
+{
+  decl_init();
+}
+
+unit_t *make_unit(func_t *func, stmt_t *stmt, scope_t *scope)
 {
   unit_t *unit = malloc(sizeof(unit_t));
   unit->func = func;
   unit->stmt = stmt;
-  unit->global_size = global_size;
+  unit->scope = *scope;
   return unit;
 }
 
@@ -32,5 +37,5 @@ unit_t *translation_unit()
     }
   }
   
-  return make_unit(func_body, stmt_body, scope_global->size);
+  return make_unit(func_body, stmt_body, scope_global);
 }

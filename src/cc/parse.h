@@ -1,9 +1,9 @@
 #ifndef PARSE_H
 #define PARSE_H
 
+#include "lex.h"
 #include "../common/map.h"
 #include "../common/hash.h"
-#include "lex.h"
 
 typedef enum tspec_e tspec_t;
 typedef enum tdcltr_e tdcltr_t;
@@ -189,11 +189,10 @@ struct stmt_s {
 struct unit_s {
   func_t *func;
   stmt_t *stmt;
-  int global_size;
+  scope_t scope;
 };
 
-void decl_init();
-
+void parse_init();
 unit_t *translation_unit();
 
 #endif

@@ -15,15 +15,12 @@ int main(int argc, char **argv)
   extern int optind;
   
   int c, err = 0;
-  int flag_debug = 0, flag_dump = 0;
+  int flag_dump = 0;
   
   static char usage[] = "usage: %s [-dD] file\n";
   
   while ((c = getopt(argc, argv, "dD")) != -1) {
     switch (c) {
-    case 'd':
-      flag_debug = 1;
-      break;
     case 'D':
       flag_dump = 1;
       break;
@@ -52,19 +49,13 @@ int main(int argc, char **argv)
   
   lex_init();
   hash_init();
-  decl_init();
+  parse_init();
   
   lexify(in, fname);
   
   unit_t *unit = translation_unit();
   
-  if (flag_debug)
-    printf("[1] translated\n");
-  
   bin_t *bin = gen(unit);
-  
-  if (flag_debug)
-    printf("[2] compiled\n");
   
   if (flag_dump)
     bin_dump(bin);
@@ -73,9 +64,6 @@ int main(int argc, char **argv)
   vm_load(vm, bin);
   
   vm_exec(vm);
-  
-  if (flag_debug)
-    printf("[3] executed\n");
   
   fclose(in);
   
