@@ -1,11 +1,17 @@
 
-fn write(i8 *n)
+fn puts(i8 *n)
 {
   asm("
     lbp
     ldr
     int 2
   ");
+}
+
+fn write(i8 *n)
+{
+  puts(n);
+  puts("\n");
 }
 
 fn print(i32 n)
@@ -23,5 +29,5 @@ fn print(i32 n)
   while (str[c] == '0' && c < 3)
     c += 1;
   
-  write(&str[c]);
+  puts(&str[c]);
 }

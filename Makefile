@@ -17,3 +17,4 @@ tests: build
 	./9c tests/prime.9c
 	./9c tests/selection.9c
 	./9c tests/dot.9c
+	./9c tests/insertion.9c

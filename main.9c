@@ -1,6 +1,3 @@
+#include "tests/stdio.9c"
 
-fn main()
-{
-  i32 i;
-  i = 4;
-}
+print(3);

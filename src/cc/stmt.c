@@ -157,7 +157,7 @@ stmt_t *declaration_statement()
     decl = decl->next;
   }
   
-  return make_expr_stmt(body); // VERY DODGY
+  return make_expr_stmt(body);
 }
 
 stmt_t *expression_statement()
