@@ -2,7 +2,7 @@
 #define BIN_H
 
 #include "instr.h"
-#include "hash.h"
+#include "../common/hash.h"
 #include <stdio.h>
 
 typedef struct bin_s bin_t;

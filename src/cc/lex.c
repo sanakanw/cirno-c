@@ -257,7 +257,7 @@ int is_digit(int c)
 int to_digit(int c)
 {
   if (!is_digit(c))
-    error("to_digit", "cannot convert '%c' into digit.", c);
+    error("cannot convert '%c' into digit.", c);
   
   return c - '0';
 }
@@ -398,7 +398,7 @@ int read_word()
     || is_digit(*lex.fid->c)
     || *lex.fid->c == '_') {
       if (letter + 1 >= &word[MAX_WORD])
-        error("read_word", "word exceeded length MAX_WORD: '%i'.", MAX_WORD);
+        error("word exceeded length MAX_WORD: '%i'.", MAX_WORD);
       
       *letter++ = read_char();
     }

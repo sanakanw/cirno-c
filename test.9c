@@ -1,3 +1,0 @@
-#include "stdio.9c"
-
-write_int(324);

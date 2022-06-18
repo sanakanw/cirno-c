@@ -81,7 +81,7 @@ int type_align(spec_t *spec, dcltr_t *dcltr)
     case DCLTR_ARRAY:
       return type_align(spec, dcltr->next);
     default:
-      error("type_align", "unknown case: dcltr->type");
+      error("unknown case: dcltr->type");
       return -1;
     }
   } else {
@@ -95,7 +95,7 @@ int type_align(spec_t *spec, dcltr_t *dcltr)
     case TY_STRUCT:
       return spec->struct_scope->size;
     default:
-      error("type_size", "unknown case: spec->tspec");
+      error("unknown case: spec->tspec");
       return -1;
     }
   }
@@ -110,7 +110,7 @@ int type_size(spec_t *spec, dcltr_t *dcltr)
     case DCLTR_ARRAY:
       return type_size(spec, dcltr->next) * dcltr->size;
     default:
-      error("type_size", "unknown case: dcltr->type");
+      error("unknown case: dcltr->type");
       return -1;
     }
   } else {
@@ -124,7 +124,7 @@ int type_size(spec_t *spec, dcltr_t *dcltr)
     case TY_STRUCT:
       return spec->struct_scope->size;
     default:
-      error("type_size", "unknown case: spec->tspec");
+      error("unknown case: spec->tspec");
       return -1;
     }
   }

@@ -169,7 +169,7 @@ void gen_stmt(stmt_t *stmt)
       gen_asm(stmt);
       break;
     default:
-      error("gen_stmt", "unknown case");
+      error("unknown case");
       break;
     }
     
@@ -215,7 +215,7 @@ void gen_asm(stmt_t *stmt)
         }
         
         if (!match_keyword)
-          error("gen_asm", "unknown character or keyword");
+          error("unknown character or keyword");
       }
       break;
     }
@@ -225,7 +225,7 @@ void gen_asm(stmt_t *stmt)
 void gen_ret(stmt_t *stmt)
 {
   if (!func_active)
-    error("gen_ret", "ret_label while func inactive");
+    error("ret_label while func inactive");
   
   gen_expr(stmt->ret_stmt.value);
   
@@ -299,7 +299,7 @@ void gen_expr(expr_t *expr)
       gen_str(expr);
       break;
     default:
-      error("gen_expr", "unknown case");
+      error("unknown case");
       break;
     }
     
@@ -389,7 +389,7 @@ void gen_addr(expr_t *expr)
     emit(ADD);
     break;
   default:
-    error("gen_addr", "unknown case");
+    error("unknown case");
     break;
   }
   
@@ -407,7 +407,7 @@ void gen_load(expr_t *expr)
     emit(LDR);
     break;
   default:
-    error("gen_load", "assign: unknown operator");
+    error("assign: unknown operator");
     break;
   }
 }
@@ -515,7 +515,7 @@ void gen_binop_assign(expr_t *expr)
     emit(STR);
     break;
   default:
-    error("gen_binop", "assign: unknown operator");
+    error("assign: unknown operator");
     break;
   }
 }
@@ -591,12 +591,12 @@ void gen_binop_math(expr_t *expr)
       emit(SETGE);
       break;
     default:
-      error("gen_binop", "unknown case: op: '%i'", expr->binop.op);
+      error("unknown case: op: '%i'", expr->binop.op);
       break;
     }
     break;
   default:
-    error("gen_binop", "unknown case: spec: '%i'", tspec);
+    error("unknown case: spec: '%i'", tspec);
     break;
   }
 }

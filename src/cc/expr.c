@@ -527,7 +527,7 @@ expr_t *make_binop(expr_t *lhs, operator_t op, expr_t *rhs)
     case OPERATOR_MOD:
       return make_const(lhs->num % rhs->num);
     default:
-      error("make_binop", "unknown operator");
+      error("unknown operator");
       break;
     }
   }

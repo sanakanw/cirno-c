@@ -9,9 +9,9 @@
 #define MAX_CALL 64
 #define MAX_FRAME 64
 
-#include "../common/bin.h"
+#include "bin.h"
+#include "instr.h"
 #include "../common/hash.h"
-#include "../common/instr.h"
 
 typedef struct vm_s vm_t;
 typedef struct call_s call_t;

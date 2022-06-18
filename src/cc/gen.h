@@ -2,7 +2,7 @@
 #define GEN_H
 
 #include "parse.h"
-#include "../common/bin.h"
+#include "../vm/bin.h"
 
 bin_t *gen(unit_t *unit);
 

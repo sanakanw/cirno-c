@@ -355,7 +355,7 @@ void vm_exec(vm_t *vm)
       vm_int(vm, fetch(vm));
       break;
     default:
-      error("vm_exec", "unknown op");
+      error("unknown op");
       break;
     }
   }

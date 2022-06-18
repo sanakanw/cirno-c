@@ -3,6 +3,7 @@
 
 #include <unistd.h>
 
+#include "common/error.h"
 #include "cc/lex.h"
 #include "cc/gen.h"
 #include "cc/parse.h"
